@@ -2,206 +2,327 @@
 # The case study is a European manufacturing organization with ~10,000 employees
 
 library(tidyverse)
+library(magrittr)
+library(GGally)
 
-library(stringi)
-
-set.seed(187)  # For reproducibility
-
-# ----------- Helper Functions -----------
-generate_ids <- function(n, prefix="emp") {
-  sprintf("%s%05d", prefix, seq(1, n))
-}
-
-random_dates <- function(n, start="2015-01-01", end="2024-01-01") {
-  as.Date(runif(n, as.numeric(as.Date(start)), as.numeric(as.Date(end))), origin = "1970-01-01")
-}
-
-random_sample <- function(vec, size, replace = TRUE) {
-  sample(vec, size = size, replace = replace)
-}
-
-# ----------- Dataset 0: Employee Master Data -----------
-num_employees <- 10000
-
-countries <- c("Germany", "France", "Italy", "Spain", "Netherlands")
-weights <- c(0.5, 0.15, 0.1, 0.1, 0.15)
-departments <- c("Finance", "Marketing", "R&D", "HR", "Sales", "Customer Service", "Production")
-levels <- c("Entry", "Specialist", "Manager", "Senior Manager", "Executive")
-level_probs <- c(0.4, 0.3, 0.2, 0.08, 0.02)
-
-employees <- tibble(
-  EmployeeID = generate_ids(num_employees),
-  Country = sample(countries, num_employees, replace = TRUE, prob = weights),
-  Department = sample(departments, num_employees, replace = TRUE),
-  JobLevel = sample(levels, num_employees, replace = TRUE, prob = level_probs),
-  Gender = sample(c("Male", "Female", "Other"), num_employees, replace = TRUE, prob = c(0.48, 0.48, 0.04)),
-  Ethnicity = sample(c("White", "Black", "Asian", "Mixed", "Other"), num_employees, replace = TRUE, prob = c(0.6, 0.1, 0.15, 0.1, 0.05)),
-  StartDate = random_dates(num_employees, start="2000-01-01", end="2024-01-01")
-)
-
-# Former employees
-former_employees <- employees %>%
-  slice_sample(n = 10000) %>%
-  mutate(
-    EmployeeID = generate_ids(10000, prefix = "ex"),
-    LeavingDate = random_dates(10000, start="2018-01-01", end="2023-12-31")
-  )
-
-# ----------- Dataset 1: Assessment Data (Recruitment) -----------
-
-roles <- c("Entry", "Specialist", "Manager", "Senior Manager", "Executive")
-role_applicants <- c(50000, 10000, 3000, 800, 200)
-
-assessment_data <- map2_dfr(roles, role_applicants, function(role, n) {
+#Core HR System Dataset ----
+set.seed(187)
+hrsystem_data <- 
   tibble(
-    ApplicantID = generate_ids(n, prefix = paste0("app_", substr(role, 1, 2))),
-    RoleApplied = role,
-    Stage_CV = sample(0:1, n, replace = TRUE, prob = c(0.3, 0.7)),
-    Stage_PhoneInterview = sample(0:1, n, replace = TRUE, prob = c(0.5, 0.5)),
-    Stage_HiringManager = sample(0:1, n, replace = TRUE, prob = c(0.7, 0.3)),
-    Stage_Additional = sample(0:1, n, replace = TRUE, prob = c(0.8, 0.2)),
-    InterviewType = sample(c("Structured", "Unstructured"), n, replace = TRUE, prob = c(0.7, 0.3)),
-    CognitiveAbility = rnorm(n, mean = 100, sd = 15),
-    PersonalityFit = runif(n, min = 1, max = 5),
-    AssessmentCentreScore = runif(n, min = 1, max = 5),
-    UsedAI = sample(c(TRUE, FALSE), n, replace = TRUE, prob = c(0.1, 0.9)),
-    CheatingDetected = rbinom(n, 1, prob = 0.02),
-    Gender = sample(c("Male", "Female"), n, replace = TRUE),
-    Ethnicity = sample(c("White", "Black", "Asian", "Other"), n, replace = TRUE, prob = c(0.6, 0.1, 0.2, 0.1))
+    employee_id = paste0("emp", 100001:130000), #generate random employee IDs
+    job_level = sample(c("Entry Level", "Specialist", "Manager/ Senior Specialist", "Director/ Head of", "Leadership"), 30000, replace = TRUE, prob = c(0.50, 0.325, 0.175, 0.019, 0.001)), #generate job level data
+    country = sample(c("Germany", "France", "Italy", "Spain", "Netherlands"), size = 30000, replace = TRUE, prob = c(0.5, 0.15, 0.1, 0.1, 0.15)), #generate country data
+    department = sample(c("Consulting", "Sales", "Customer Service", "R&D", "Marketing", "Finance", "HR"), size = 30000, replace = TRUE, prob = c(0.40, 0.15, 0.10, 0.10, 0.05, 0.04, 0.02)), #generate department data
+    start_date = sample(seq(as.Date("2015-01-01"), as.Date("2025-04-015"), by = "day"), size = 30000, replace = TRUE),
+    start_year = floor_date(start_date, "year"),
+    start_month = floor_date(start_date, "month")
+  ) 
+
+# #define job - level specific tenurein years
+# job_level_tenure_targets <- c(
+#   "Entry" = 2,
+#   "Specialist" = 3,
+#   "Manager/Senior Specialist" = 4,
+#   "Director/Head of" = 5,
+#   "Executive" = 8
+# ) #add department specific and country specific tenure later
+# tenure_targets <- job_level_tenure_targets * 365
+
+hrsystem_data %<>% 
+  rowwise() %>%
+  mutate(
+    leaving_date = case_when(
+      job_level == "Entry Level" ~ as_date(round(rnorm(1, mean = start_date + 730, sd = 200))),
+      job_level == "Specialist" ~ as_date(round(rnorm(1, mean = start_date + 1095, sd = 300))),
+      job_level == "Manager/ Senior Specialist" ~ as_date(round(rnorm(1, mean = start_date + 1460, sd = 400))),
+      job_level == "Director/ Head of" ~ as_date(round(rnorm(1, mean = start_date + 1825, sd = 500))),
+      job_level == "Leadership" ~ as_date(round(rnorm(1, mean = start_date + 2920, sd = 800))),
+      TRUE ~ NA
+    ),
+    leaving_year = floor_date(leaving_date, "year"),
+    leaving_month = floor_date(leaving_date, "month"),
+    tenure = interval(start_date, leaving_date),
+    tenure_years = round(time_length(tenure, "years"), 2)
+  ) %>%
+  ungroup()
+  
+hrsystem_data %<>% 
+  mutate(
+    employee_status = if_else(leaving_date > as.Date("2025-04-15"), "Current", "Leaver"),
+    leaving_date = if_else(leaving_date > as.Date("2025-04-15"), NA_Date_, leaving_date)
+  ) 
+
+hrsystem_data_long <- hrsystem_data %>% 
+  mutate(
+    n_events = round(runif(n(), min = 0, max = 1) * tenure_years)
+  ) %>% 
+  filter(employee_status == "Current" | leaving_date >= as_date("2020-01-01")) %>%  
+  select(-start_year, -start_month, -leaving_year, -leaving_month, -tenure) %>%
+  uncount(n_events) 
+
+hrsystem_data_long %<>% 
+  rowwise() %>%
+  mutate(
+    event_date = ifelse(!is.na(leaving_date), as.Date(sample(as.numeric(start_date):as.numeric(leaving_date), 1), origin = "1970-01-01"), 
+                         as.Date(sample(as.numeric(start_date):as.numeric(as.Date("2025-04-15")), 1), origin = "1970-01-01")
+                         ) %>% as.Date(),
+    event_type = sample(c("Promotion", "Salary Increase", "Parental Leave", "Department Change"), size = 1, replace = TRUE, prob = c(0.55, 0.15, 0.03, 0.07))
+  ) %>%
+  ungroup()
+
+hrsystem_data_long %<>%
+  mutate(
+    event_id = replicate(nrow(hrsystem_data_long), paste0(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), collapse = ""))
+  ) %>% 
+  arrange(employee_id, event_date) %>% 
+  group_by(employee_id) %>% 
+  mutate(
+    event_no = row_number(),
+    update_status = if_else(row_number() == n(), "active", "historic")
+    ) 
+  
+write_csv(hrsystem_data_long, "hr_data/hrsystem_data.csv")
+
+
+#construction side ----
+hrsystem_data %>%
+  filter(employee_status == "Current" & start_date > as_date("2024-04-01")) %>% 
+  count(employee_status)
+,
+active_profile = "Active"
+
+
+event_id = replicate(1, paste0(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), collapse = ""))
+
+#5% promotion rate
+#2.5% salary increases
+#if leaver, last event -> left
+ 
+hrsystem_data %>% group_by(job_level) %>% summarise(av_ten = mean(tenure_years))
+hrsystem_data %>% count(employee_status, job_level)  
+
+ hrsystem_data %>% 
+   #group_by(job_level) %>% 
+  ggplot(aes(tenure_years, fill = employee_status)) +
+    geom_density(position = "identity", alpha = 0.4, bins = 100)  
+  
+  
+hrsystem_data %>% 
+  filter(leaving_date >= as_date("2020-01-01"))
+  select(-leaving_year, -leaving_month) 
+
+
+
+#recruitment data ----
+#very simple simulation of recruitment data, demographic variables will be added at a later stage and some randomness will be introduced to the number of candidates per stage  
+  
+  
+#helper function to generate ids
+generate_ids <- function(n, prefix="emp") {
+    sprintf("%s%05d", prefix, seq(1, n))
+  }  
+  
+
+hires4h <- hrsystem_data %>% filter(start_date >= as_date("2020-01-01")) %>%  select(employee_id, job_level, department) 
+
+
+#add a few fields to the dataset 
+
+#stage4 hires and rejected
+hires4h %<>%
+  mutate(
+    status = "hired",
+    stage = "Stage 4: Team Interview",
+    applicant_id = replicate(nrow(hires4h), paste0(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), collapse = "")),
+    job_id = replicate(nrow(hires4h), paste0(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), collapse = "")),
+  ) 
+
+hires4r <- hires4h %>%
+  mutate(
+    employee_id = "",
+    job_level = "",
+    department = "",
+    status = "rejected",
+    applicant_id = replicate(nrow(hires4h), paste0(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), collapse = ""))
+  ) 
+
+hires4hr <- 
+  rbind(hires4h, hires4r)
+
+#stage 3 progressed and rejected
+hires3p <- hires4hr  %>% 
+  mutate(
+    stage = "Stage 3: HM Interview",
+    status = "progressed"
   )
-})
 
-# ----------- Dataset 2: 360 Feedback Data -----------
-leadership_roles <- employees %>%
-  filter(JobLevel %in% c("Manager", "Senior Manager", "Executive")) %>%
-  slice_sample(prop = 0.8)
 
-competencies <- c("Vision", "Inspiration", "Execution", "Integrity", "AnalyticalSkill", "Communication")
+hires3r <- hires3p  %>% 
+  mutate(
+    employee_id = "",
+    job_level = "",
+    department = "",
+    status = "rejected",
+    applicant_id = replicate(nrow(hires3p), paste0(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), collapse = ""))
+  ) 
 
+
+hires3pr <- 
+  rbind(hires3p, hires3r)
+
+
+#stage 2 progressed and rejected
+hires2p <- hires3pr  %>% 
+  mutate(
+    stage = "Stage 2: Phone Interview",
+    status = "progressed"
+  )
+
+
+hires2r <- hires2p  %>% 
+  mutate(
+    employee_id = "",
+    job_level = "",
+    department = "",
+    status = "rejected",
+    applicant_id = replicate(nrow(hires2p), paste0(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), collapse = ""))
+  ) 
+
+
+hires2pr <- 
+  rbind(hires2p, hires2r)
+
+#stage 1 progressed and rejected
+hires1p <- hires2pr  %>% 
+  mutate(
+    stage = "Stage 1: CV Screening",
+    status = "progressed"
+  )
+
+
+hires1ra <- hires1p  %>% 
+  mutate(
+    employee_id = "",
+    job_level = "",
+    department = "",
+    status = "rejected",
+    applicant_id = replicate(nrow(hires1p), paste0(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), collapse = ""))
+  ) 
+
+hires1rb <- hires1p  %>% 
+  mutate(
+    employee_id = "",
+    job_level = "",
+    department = "",
+    status = "rejected",
+    applicant_id = replicate(nrow(hires1p), paste0(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), collapse = ""))
+  ) 
+
+hires1rc <- hires1p  %>% 
+  mutate(
+    employee_id = "",
+    job_level = "",
+    department = "",
+    status = "rejected",
+    applicant_id = replicate(nrow(hires1p), paste0(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), collapse = ""))
+  ) 
+
+hires1pr <- 
+  rbind(hires1p, hires1ra, hires1rb, hires1rc)
+
+
+#combine data from all steps
+
+applicant_data <- rbind(hires4hr, hires3pr, hires2pr, hires1pr) 
+applicant_data %<>% 
+  select(job_id, applicant_id, stage, status, employee_id)
+write_csv(applicant_data, "hr_data/applicant_data.csv")
+
+#360 degree feedback data ----
+leadership_roles <- hrsystem_data %>%
+  filter(job_level %in% c("Manager/ Senior Specialist", "Director/ Head of") & employee_status == "Current") %>%
+  slice_sample(prop = 0.6)
+
+competencies <- c("Inspire with Purpose", "Drive for Results", "Own the Outcome", 
+                  "Speak Up and Listen", "Lead with Empathy", "Grow Others",
+                  "Bridge Across Boundaries", "Act with Integrity", "Make it Simple",
+                  "Lead Change Fearlessly", "Learn and Adapt Fast", "Champion Diversity") #missing autonomy support, and setting boundaries
+all_vars <- c(paste("Self:", competencies), paste("Manager:", competencies), paste("Peer:", competencies), paste("Reports:", competencies))
+
+#self ratings round(rnorm(12, 4.4, 0.1), 2) 
+#manager ratings round(rnorm(12, 3.9, 0.1), 2) 
+#peer ratings round(rnorm(12, 4.1, 0.1), 2) 
+#report ratings round(rnorm(12, 4.1, 0.1), 2) 
+
+feedback <- leadership_roles %>% 
+  select(employee_id) %>%
+  mutate(
+    `Self: Inspire with Purpose` = rnorm(nrow(leadership_roles), 4.34 , 0.4) %>% round(0) %>% pmin(5),       
+    `Self: Drive for Results` =  rnorm(nrow(leadership_roles), 4.51 , 0.4) %>% round(0) %>% pmin(5),         
+    `Self: Own the Outcome` = rnorm(nrow(leadership_roles), 4.42  , 0.4) %>% round(0) %>% pmin(5),               
+    `Self: Speak Up and Listen` = rnorm(nrow(leadership_roles), 4.43  , 0.4) %>% round(0)  %>% pmin(5),         
+    `Self: Lead with Empathy` = rnorm(nrow(leadership_roles), 4.32  , 0.4) %>% round(0) %>% pmin(5),           
+    `Self: Grow Others` = rnorm(nrow(leadership_roles), 4.30   , 0.4) %>% round(0)  %>% pmin(5),               
+    `Self: Bridge Across Boundaries` = rnorm(nrow(leadership_roles), 4.35  , 0.4) %>% round(0)  %>% pmin(5),     
+    `Self: Act with Integrity` = rnorm(nrow(leadership_roles), 4.37  , 0.4) %>% round(0) %>% pmin(5),        
+    `Self: Make it Simple` = rnorm(nrow(leadership_roles), 4.33 , 0.4) %>% round(0) %>% pmin(5),        
+    `Self: Lead Change Fearlessly` = rnorm(nrow(leadership_roles), 4.47 , 0.4) %>% round(0) %>% pmin(5),      
+    `Self: Learn and Adapt Fast` = rnorm(nrow(leadership_roles), 4.29 , 0.4) %>% round(0) %>% pmin(5),        
+    `Self: Champion Diversity` = rnorm(nrow(leadership_roles), 4.42 , 0.4) %>% round(0) %>% pmin(5),     
+    
+    `Manager: Inspire with Purpose` = rnorm(nrow(leadership_roles), 3.92 , 0.4) %>% round(0) %>% pmin(5),    
+    `Manager: Drive for Results` = rnorm(nrow(leadership_roles), 4.05 ) %>% round(0) %>% pmin(5),       
+    `Manager: Own the Outcome` = rnorm(nrow(leadership_roles), 3.74 , 0.4) %>% round(0) %>% pmin(5),         
+    `Manager: Speak Up and Listen` = rnorm(nrow(leadership_roles), 3.96 , 0.4 ) %>% round(0) %>% pmin(5),     
+    `Manager: Lead with Empathy` = rnorm(nrow(leadership_roles), 3.84 , 0.4) %>% round(0) %>% pmin(5),       
+    `Manager: Grow Others` = rnorm(nrow(leadership_roles), 4.00  , 0.4) %>% round(0) %>% pmin(5),             
+    `Manager: Bridge Across Boundaries` = rnorm(nrow(leadership_roles), 3.86  , 0.4) %>% round(0) %>% pmin(5),
+    `Manager: Act with Integrity` = rnorm(nrow(leadership_roles), 3.95 , 0.4) %>% round(0) %>% pmin(5),      
+    `Manager: Make it Simple` = rnorm(nrow(leadership_roles), 3.92  , 0.4) %>% round(0) %>% pmin(5),          
+    `Manager: Lead Change Fearlessly` = rnorm(nrow(leadership_roles), 3.97  , 0.4) %>% round(0) %>% pmin(5),  
+    `Manager: Learn and Adapt Fast` = rnorm(nrow(leadership_roles), 3.93  , 0.4) %>% round(0) %>% pmin(5),    
+    `Manager: Champion Diversity` = rnorm(nrow(leadership_roles), 3.74, 0.4) %>% round(0) %>% pmin(5),      
+    
+    `Peers: Inspire with Purpose` = rnorm(nrow(leadership_roles), 4.09  , 0.4)  %>% pmin(5),    
+    `Peers: Drive for Results` = rnorm(nrow(leadership_roles), 4.15  )  %>% pmin(5),       
+    `Peers: Own the Outcome` = rnorm(nrow(leadership_roles), 3.99 , 0.4)  %>% pmin(5),         
+    `Peers: Speak Up and Listen` = rnorm(nrow(leadership_roles), 4.23 , 0.4)  %>% pmin(5),     
+    `Peers: Lead with Empathy` = rnorm(nrow(leadership_roles), 4.28  , 0.4)  %>% pmin(5),       
+    `Peers: Grow Others` = rnorm(nrow(leadership_roles), 4.11 , 0.4)  %>% pmin(5),             
+    `Peers: Bridge Across Boundaries` = rnorm(nrow(leadership_roles), 4.14  , 0.4) %>% pmin(5) ,
+    `Peers: Act with Integrity` = rnorm(nrow(leadership_roles), 4.12 , 0.4) %>% pmin(5) ,      
+    `Peers: Make it Simple` = rnorm(nrow(leadership_roles), 3.98  , 0.4)  %>% pmin(5),          
+    `Peers: Lead Change Fearlessly` = rnorm(nrow(leadership_roles), 4.04    , 0.4)  %>% pmin(5),  
+    `Peers: Learn and Adapt Fast` = rnorm(nrow(leadership_roles), 4.19   , 0.4)  %>% pmin(5),    
+    `Peers: Champion Diversity` = rnorm(nrow(leadership_roles), 3.97, 0.4)  %>% pmin(5),  
+    
+    `Reports: Inspire with Purpose` = rnorm(nrow(leadership_roles), 4.11  , 0.4)  %>% pmin(5),    
+    `Reports: Drive for Results` = rnorm(nrow(leadership_roles), 4.20  )  %>% pmin(5),       
+    `Reports: Own the Outcome` = rnorm(nrow(leadership_roles), 4.13  , 0.4)  %>% pmin(5),         
+    `Reports: Speak Up and Listen` = rnorm(nrow(leadership_roles), 3.86  , 0.4  %>% pmin(5)) ,     
+    `Reports: Lead with Empathy` = rnorm(nrow(leadership_roles), 4.19 , 0.4)  %>% pmin(5),       
+    `Reports: Grow Others` = rnorm(nrow(leadership_roles), 4.04 , 0.4)  %>% pmin(5),             
+    `Reports: Bridge Across Boundaries` = rnorm(nrow(leadership_roles), 4.16  , 0.4)  %>% pmin(5),
+    `Reports: Act with Integrity` = rnorm(nrow(leadership_roles), 3.97  , 0.4)  %>% pmin(5),      
+    `Reports: Make it Simple` = rnorm(nrow(leadership_roles), 4.24  , 0.4)  %>% pmin(5),          
+    `Reports: Lead Change Fearlessly` = rnorm(nrow(leadership_roles), 4.11   , 0.4)  %>% pmin(5),  
+    `Reports: Learn and Adapt Fast` = rnorm(nrow(leadership_roles), 4.15    , 0.4)  %>% pmin(5),    
+    `Reports: Champion Diversity` = rnorm(nrow(leadership_roles), 4.13 , 0.4)  %>% pmin(5)
+  )
+ 
+
+for (i in 2:49) {
+  hist(feedback[[i]])
+}
+
+
+
+#ggpairs(feedback[-1])
+feedback %>% summarise()
+
+write_csv(feedback, "hr_data/feedback.csv")
+
+#under construction
 generate_feedback_scores <- function(n) {
   rnorm(n, mean = 4, sd = 0.5) %>% pmin(5) %>% pmax(1)
 }
-
-feedback_data <- leadership_roles %>%
-  rowwise() %>%
-  mutate(
-    Self = list(setNames(generate_feedback_scores(length(competencies)), competencies)),
-    Manager = list(setNames(generate_feedback_scores(length(competencies)), competencies)),
-    Peers = list(setNames(colMeans(replicate(sample(2:4, 1), generate_feedback_scores(length(competencies))), na.rm = TRUE), competencies)),
-    Reports = list(setNames(colMeans(replicate(sample(2:6, 1), generate_feedback_scores(length(competencies))), na.rm = TRUE), competencies))
-  ) %>%
-  unnest_wider(c(Self, Manager, Peers, Reports), names_sep = "_")
-
-feedback_data <- feedback_data %>%
-  mutate(
-    AnalyticalSkill_Peers = ifelse(Department %in% c("R&D", "Production"), AnalyticalSkill_Peers + 0.3, AnalyticalSkill_Peers),
-    Communication_Reports = ifelse(Department == "Marketing", Communication_Reports + 0.3, Communication_Reports)
-  ) %>%
-  mutate(across(starts_with("AnalyticalSkill"), ~pmin(5, .)),
-         across(starts_with("Communication"), ~pmin(5, .)))
-
-# ----------- Dataset 3: Employment Record -----------
-employment_record <- employees %>%
-  mutate(
-    Promotions = sample(0:4, n(), replace = TRUE, prob = c(0.4, 0.3, 0.2, 0.08, 0.02)),
-    Salary = round(runif(n(), 30000, 120000), -2),
-    SalaryIncreasePct = round(runif(n(), 0, 0.10), 3),
-    PerformanceRating = sample(1:5, n(), replace = TRUE, prob = c(0.05, 0.1, 0.3, 0.4, 0.15)),
-    SickDays = rpois(n(), lambda = 8)
-  )
-
-promotion_events <- employment_record %>%
-  rowwise() %>%
-  do({
-    id <- .$EmployeeID
-    n_promotions <- .$Promotions
-    if (n_promotions == 0) return(NULL)
-    data.frame(
-      EmployeeID = id,
-      PromotionDate = sort(random_dates(n_promotions, .$StartDate, "2024-01-01")),
-      NewLevel = sample(levels, n_promotions, replace = TRUE)
-    )
-  }) %>% bind_rows()
-
-leaving_data <- employees %>%
-  slice_sample(prop = 0.2) %>%
-  mutate(
-    LeavingDate = random_dates(n(), start = "2020-01-01", end = "2024-01-01")
-  )
-
-# ----------- Dataset 4: Sales Data -----------
-sales_team <- employees %>%
-  filter(Department == "Sales")
-
-sales_data <- sales_team %>%
-  rowwise() %>%
-  mutate(
-    Year = list(2019:2024),
-    Revenue = list(round(runif(6, 50000, 500000), -2)),
-    DealsClosed = list(sample(20:200, 6, replace = TRUE))
-  ) %>%
-  unnest(cols = c(Year, Revenue, DealsClosed))
-
-# ----------- Dataset 5: Customer Service Ratings -----------
-cs_team <- employees %>%
-  filter(Department == "Customer Service")
-
-customer_ratings <- cs_team %>%
-  rowwise() %>%
-  mutate(
-    Month = list(seq(ymd("2023-01-01"), ymd("2024-01-01"), by = "month")),
-    AvgResponseTime = list(round(runif(13, 30, 300), 1)),
-    SatisfactionScore = list(round(runif(13, 3.5, 5), 2)),
-    ResolutionRate = list(round(runif(13, 0.7, 1), 2))
-  ) %>%
-  unnest(cols = c(Month, AvgResponseTime, SatisfactionScore, ResolutionRate))
-
-# ----------- Dataset 6: Production Metrics -----------
-prod_team <- employees %>%
-  filter(Department == "Production")
-
-production_data <- prod_team %>%
-  rowwise() %>%
-  mutate(
-    Month = list(seq(ymd("2023-01-01"), ymd("2024-01-01"), by = "month")),
-    UnitsProduced = list(sample(800:1500, 13, replace = TRUE)),
-    DefectRate = list(round(runif(13, 0.01, 0.05), 3)),
-    DowntimeHours = list(round(runif(13, 0, 20), 1))
-  ) %>%
-  unnest(cols = c(Month, UnitsProduced, DefectRate, DowntimeHours))
-
-# ----------- Dataset 7: Learning & Development Activities -----------
-learning_topics <- c("Leadership", "Compliance", "Technical", "Soft Skills", "Project Management")
-learning_modes <- c("eLearning", "Workshop", "Coaching", "Blended")
-
-learning_data <- employees %>%
-  slice_sample(prop = 0.6) %>%
-  rowwise() %>%
-  mutate(
-    ActivityID = generate_ids(1, prefix = "learn"),
-    Topic = sample(learning_topics, 1),
-    Mode = sample(learning_modes, 1),
-    CompletionDate = random_dates(1, start = "2021-01-01", end = "2024-01-01"),
-    Hours = sample(2:16, 1),
-    FeedbackScore = round(runif(1, 3.5, 5), 2)
-  )
-
-# ----------- Dataset 8: Survey Data -----------
-survey_items <- c("Respect", "Inclusion", "Workload", "Recognition", "Wellbeing", "Innovation", "Trust")
-
-survey_data <- employees %>%
-  slice_sample(prop = 0.7) %>%  # 70% response rate
-  rowwise() %>%
-  mutate(
-    SurveyDate = random_dates(1, "2023-01-01", "2023-12-31"),
-    Respect = round(runif(1, 3.5, 5), 2),
-    Inclusion = round(runif(1, 3.0, 5), 2),
-    Workload = round(runif(1, 2.5, 5), 2),
-    Recognition = round(runif(1, 3.0, 5), 2),
-    Wellbeing = round(runif(1, 3.0, 5), 2),
-    Innovation = round(runif(1, 2.5, 5), 2),
-    Trust = round(runif(1, 3.0, 5), 2)
-  )
-
-# Preview
-head(survey_data)
