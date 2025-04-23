@@ -95,6 +95,11 @@ promotions_24_25_new %>%
   ungroup() %>%
   view()
 
+#clean up promotions example
+rm(promotions_24_25)
+rm(promotions_24_25_new)
+file.remove("hr_data/promotions_24_25.csv")
+
 #pivot
 hrsystem_data %>% 
   pivot_wider(id_cols = employee_id, 
@@ -115,6 +120,33 @@ hrsystem_data %>%
   view()
 
 #explore visualisations
+#only look at active employee updates 
+#active updates includes the latest update to a file, also for leavers
+hr_system_active <- hrsystem_data %>%
+  filter(update_status == "active")
+
+#let's look at tenure distribution
+hist(hr_system_active$tenure_years)
+
+hr_system_active %>%
+  ggplot(aes(x = tenure_years)) +
+  #geom_histogram()  #alternative
+  #geom_density() #alternative
+  geom_boxplot() #alternative
+
+hr_system_active %>%
+  ggplot(aes(x = tenure_years, fill = employee_status)) +
+  geom_histogram(position = "identity", alpha = 0.5)  
+
+#let's plot the number of employees by country
+hr_system_active %>% 
+  ggplot(aes(x = country)) +
+  geom_bar()
+
+#lets split by employee status
+hr_system_active %>% 
+  ggplot(aes(x = country, fill = employee_status)) +
+  geom_bar()
 
 #ATS (Applicant Tracking System) Data ----
 
