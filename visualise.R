@@ -52,42 +52,46 @@ hrsystem_data %>%
   geom_boxplot(position = "identity", alpha = 0.5) +
   facet_wrap(~job_level)
 
+#can we flip this?
+hrsystem_data %>%
+  filter(department != "Production") %>%
+  ggplot(aes(x = tenure_years)) +
+  geom_boxplot(position = "identity", alpha = 0.5) +
+  facet_wrap(~job_level) + 
+  coord_flip()
+
+#let's look at a scatter plot
+feedback_data %>%
+ggplot(aes(x=`Peers: Drive for Results`, y=`Reports: Drive for Results`)) +
+  geom_point() #+
+  #geom_smooth(method=lm , color="red", se=FALSE) 
+
 
 #let's plot the number of employees by country
 hrsystem_data %>% 
   ggplot(aes(x = country)) +
   geom_bar()
 
-#lets split by employee status
+#lets split by employee status and add a title
 hrsystem_data %>% 
   ggplot(aes(x = country, fill = employee_status)) +
-  geom_bar()
+  geom_bar() + 
+  ggtitle("Great graph: Employees in different Countries")
 
-#this is the same as count + geom_col
+#we can also plot numeric data as barcharts (but this is for reporting only, not for exploration)
+# Calculates mean (sd etc. can also be computed for standard errors)
 hrsystem_data %>%
-  count(country, employee_status) %>% #view()
-  ggplot(aes(country))
-
-#we can also produce barplots with geom_col but we need to summarise the data ourselves first
-
+  group_by(job_level) %>%
+  summarise( 
+    mean=mean(tenure_years)
+  ) %>%
+  ggplot(aes(x=job_level, y=mean)) +
+  geom_bar(stat="identity", fill="forestgreen", alpha=0.5) 
 
 
 #Aufgaben
 #   Wie unterscheidet sich die Verteilung der Mitarbeiter auf die verschiedenen Job Level in den verschiedenen Abteilungen?
-
-
-
 #   Wie sind die verschiedenen Departments auf die verschiedenen Länder verteilt?
-hrsystem_data %>% 
-  filter(employee_status == "Current") %>%
-  count(country, department)
-
-hrsystem_data %>% 
-  filter(employee_status == "Current") %>%
-  ggplot(aes(country, fill = department)) +
-  geom_bar()
-
-
 #   Wie unterscheidet sich die typische Tenure zwischen Ländern, Departments und Job Leveln?
 #   Wie ist die Geschlechterverteilung in den verschiedenen Departments und job levels?
 #   Gibt es beim einstellen neuer Mitarbeiter einen Bias?
