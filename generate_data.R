@@ -466,7 +466,8 @@ hrsystem_data %<>%
 hrsystem_data %<>% 
   mutate(
     performance_25 = case_when(
-      job_level != "Entry Level/ Manual" & department == "Sales" ~ sample(c(2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5), length(job_level != "Entry Level/ Manual" & department == "Sales"), replace = TRUE)
+      job_level != "Entry Level/ Manual" & department == "Sales" ~ sample(c(2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5), length(job_level != "Entry Level/ Manual" & department == "Sales"), replace = TRUE),
+      TRUE ~ performance_25
     )
   ) 
 
@@ -557,10 +558,6 @@ applicant_data %<>%
 write_csv(applicant_data, "hr_data/applicant_data.csv")
 
 #to do list ----
-#for Wednesday
-#performance data skew (range restriction for validity of assessments?)
-
-
 #for next week
 #check 360 data again to see what I tried to do there
 #look at hiring data again to make sure the data reflects internal hiring (if not too complicated)
@@ -588,6 +585,7 @@ write_csv(applicant_data, "hr_data/applicant_data.csv")
 #group differences for country and department (across all datasets)
 #add gender data
 #scores for assessment stage? / maybe just general fit score on assessment?
+#performance data skew (range restriction for validity of assessments?)
 
 #comments
 
