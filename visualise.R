@@ -9,7 +9,7 @@ library(tidyverse) #packages for data wrangling, analysis and visualisation
 hrsystem_data <- read_csv("hr_data/hrsystem_data.csv") 
 applicant_data <- read_csv("hr_data/applicant_data.csv")
 feedback_data <- read_csv("hr_data/feedback.csv")
-assessementcenter_data <- read_csv("hr_data/assessmentcenter_data.csv")
+assessmentcenter_data <- read_csv("hr_data/assessmentcenter_data.csv")
 
 #visualisations ----
 
@@ -141,14 +141,14 @@ applicant_data %>%
   facet_wrap(~stage) #Ehrlich gesagt, hart zu erkennen, aber scheint ungefähr ausgeglichen, da müssen wir wohl eher Zahlen anschauen und vllt einen statistischen Test machen
 
 #   Welchen Score braucht man in dem Sales Assessment Center ungefähr um eingestellt zu werden? 
-assessementcenter_data %>% 
-  ggplot(aes(assessment_center, fill = status)) + 
+assessmentcenter_data %>% 
+  ggplot(aes(assessmentcenter_score, fill = status)) + 
   geom_histogram(position = "identity", alpha = 0.5) #ungefähr 3.75 
 
 #   Ist das Assessment Center ein valides Instrument, um Performance vorherzusagen? 
-assessementcenter_data %>% 
+assessmentcenter_data %>% 
   left_join(hrsystem_data) %>%
-  ggplot(aes(assessment_center, performance_25)) +
+  ggplot(aes(assessmentcenter_score, performance_25)) +
   geom_point() +
   geom_smooth(method = lm) #sieht schon mal gut aus, aber hier brauchen wir einen statistsichen Test
 

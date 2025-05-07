@@ -3,6 +3,8 @@
 
 library(tidyverse)
 library(magrittr)
+library(corrplot)
+library(effectsize)
 
 #Core HR System Dataset ----
 #load example proportions
@@ -83,7 +85,7 @@ hrsystem_data %<>% #generate tenure and leaving data
 hrsystem_data %<>%
   arrange(start_date) %>% 
   mutate(
-    employee_id = paste0("emp", 1:nrow(hrsystem_data) + 10000), #generate random employee IDs
+    employee_id = paste0("emp", 1:nrow(hrsystem_data) + 100000), #generate random employee IDs
     start_year = floor_date(start_date, "year"),
     start_month = floor_date(start_date, "month"),
     leaving_year = floor_date(leaving_date, "year"),
@@ -274,7 +276,10 @@ applicant_data %<>%
     )
   ) 
 
-#add gender data
+#write to file
+write_csv(applicant_data, "hr_data/applicant_data.csv")
+
+#add gender data to applicant and hr data ----
 
 gender_probs_hire <- tribble(
   ~department,        ~job_level,                 ~p_woman,
@@ -400,8 +405,9 @@ temp_gender_combined %<>%
   ) %>%
   select(applicant_id, employee_id, gender)
 
+
 #join gender and hr data
-hrsystem_data %<>% left_join(temp_gender_combined) 
+hrsystem_data %<>% left_join(temp_gender_combined %>% select(employee_id, gender)) 
 
 #write to file
 write_csv(hrsystem_data, "hr_data/hrsystem_data.csv")
@@ -412,36 +418,35 @@ applicant_data %<>% left_join(temp_gender_combined)
 #write to file
 write_csv(applicant_data, "hr_data/applicant_data.csv")
 
-
 #assessment center dataset ----
-assessment_center <- applicant_data %>% 
+assessmentcenter_data <- applicant_data %>% 
   filter(department == "Sales", job_level == "Entry Level/ Manual", stage == "Stage 4: Assessment Center") %>%
   rowwise() %>%
   mutate(
-    assessment_center = case_when(
+    assessmentcenter_score = case_when(
       str_detect(employee_id, "emp") ~ round(rnorm(1, mean = 4, sd = 0.25), 1),
       !str_detect(employee_id, "emp") ~ round(rnorm(1, mean = 3.5, sd = 0.25), 1)
       ),
-    assessment_center = if_else(assessment_center > 5, 5, assessment_center),
-    assessment_center = if_else(status == "hired" & assessment_center < 3.75, round(rnorm(1, mean = 3.85, sd = 0.1), 1),
-                                if_else(!status == "hired" & assessment_center > 3.75, round(rnorm(1, mean = 3.65, sd = 0.1), 1), assessment_center))
+    assessmentcenter_score = if_else(assessmentcenter_score > 5, 5, assessmentcenter_score),
+    assessmentcenter_score = if_else(status == "hired" & assessmentcenter_score < 3.75, round(rnorm(1, mean = 3.85, sd = 0.1), 1),
+                                if_else(!status == "hired" & assessmentcenter_score > 3.75, round(rnorm(1, mean = 3.65, sd = 0.1), 1), assessmentcenter_score))
     ) %>% 
   ungroup()
 
 #write to file
-write_csv(assessment_center, "hr_data/assessmentcenter_data.csv")
+write_csv(assessmentcenter_data, "hr_data/assessmentcenter_data.csv")
 
 #create performance data for sales reps that has a slight correlation with assessment center scores
-performance_assessment <- assessment_center %>% 
+performance_assessment <- assessmentcenter_data %>% 
   mutate(
     performance_25 = case_when(
-      str_detect(employee_id, "emp") ~ ntile(assessment_center, 5)
+      str_detect(employee_id, "emp") ~ ntile(assessmentcenter_score, 5)
     )
   ) 
 
 performance_assessment %<>% 
   filter(str_detect(employee_id, "emp")) %>% 
-  select(employee_id, assessment_center, performance_25)
+  select(employee_id, assessmentcenter_score, performance_25)
 
 performance_assessment %<>% 
   mutate(
@@ -454,10 +459,40 @@ performance_assessment %<>%
 
 hist(performance_assessment$performance_25_new)
 performance_assessment %>% count(performance_25_new)
-cor(performance_assessment$assessment_center, performance_assessment$performance_25_new, use = "complete.obs")
+cor(performance_assessment$assessmentcenter_score, performance_assessment$performance_25_new, use = "complete.obs")
 
 hrsystem_data %<>% left_join(performance_assessment %>% select(employee_id, performance_25)) 
-#create performance data for the rest of the company
+
+#personality data ----
+personality_hired <- tibble(
+  Test_id = paste0("test", 1:nrow(assessmentcenter_data %>% filter(status == "hired")) + 100000), 
+  Adjustment = rnorm(nrow(assessmentcenter_data %>% filter(status == "hired")), mean = 68, sd = 10) %>% pmin(100),  # mittel
+  Ambition = rnorm(nrow(assessmentcenter_data %>% filter(status == "hired")), mean = 86, sd = 10) %>% pmin(100),       # hoch
+  Sociability = rnorm(nrow(assessmentcenter_data %>% filter(status == "hired")), mean = 73, sd = 10) %>% pmin(100),    # mittel
+  Interpersonal_Sensitivity = rnorm(nrow(assessmentcenter_data %>% filter(status == "hired")), mean = 80, sd = 10) %>% pmin(100), # hoch
+  Prudence = rnorm(nrow(assessmentcenter_data %>% filter(status == "hired")), mean = 85, sd = 10) %>% pmin(100),       # hoch
+  Inquisitive = rnorm(nrow(assessmentcenter_data %>% filter(status == "hired")), mean = 55, sd = 10) %>% pmin(100),    # mittel-niedrig
+  Learning_Approach = rnorm(nrow(assessmentcenter_data %>% filter(status == "hired")), mean = 78, sd = 10) %>% pmin(100), # mittel-niedrig
+  Status = "hired"
+)
+
+personality_rejected <- tibble(
+  Test_id = paste0("test", 1:nrow(assessmentcenter_data %>% filter(status != "hired")) + 100000 + nrow(assessmentcenter_data %>% filter(status == "hired"))), 
+  Adjustment = rnorm(nrow(assessmentcenter_data %>% filter(status != "hired")), mean = 67, sd = 10) %>% pmin(100),  # mittel
+  Ambition = rnorm(nrow(assessmentcenter_data %>% filter(status != "hired")), mean = 78, sd = 10) %>% pmin(100),       # hoch
+  Sociability = rnorm(nrow(assessmentcenter_data %>% filter(status != "hired")), mean = 65, sd = 10) %>% pmin(100),    # mittel
+  Interpersonal_Sensitivity = rnorm(nrow(assessmentcenter_data %>% filter(status != "hired")), mean = 77, sd = 10) %>% pmin(100), # hoch
+  Prudence = rnorm(nrow(assessmentcenter_data %>% filter(status != "hired")), mean = 73, sd = 10) %>% pmin(100),       # hoch
+  Inquisitive = rnorm(nrow(assessmentcenter_data %>% filter(status != "hired")), mean = 57, sd = 10) %>% pmin(100),    # mittel-niedrig
+  Learning_Approach = rnorm(nrow(assessmentcenter_data %>% filter(status != "hired")), mean = 77, sd = 10) %>% pmin(100), # mittel-niedrig
+  Status = "rejected",
+)
+
+personality_data <- rbind(personality_hired, personality_rejected)
+write_csv(personality_data, "hr_data/personality_data.csv") 
+
+
+#create performance data for the rest of the company ----
 hrsystem_data %<>%
   mutate(
     performance_25 = ifelse(is.na(performance_25), sample(c(2, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5), length(is.na(performance_25)), replace = TRUE), performance_25)
@@ -471,8 +506,14 @@ hrsystem_data %<>%
     )
   ) 
 
+hrsystem_data %<>% 
+  mutate(
+    performance_25 = if_else(employee_status == "Current", performance_25, NA_integer_)
+  )
+
 #write to file
 write_csv(hrsystem_data, "hr_data/hrsystem_data.csv")
+
 
 
 #360 degree feedback data ----
@@ -480,104 +521,238 @@ leadership_roles <- hrsystem_data %>%
   filter(job_level %in% c("Manager/ Senior Specialist", "Director/ Head of") & employee_status == "Current") %>%
   slice_sample(prop = 0.6)
 
-competencies <- c("Inspire with Purpose", "Drive for Results", "Own the Outcome", 
-                  "Speak Up and Listen", "Lead with Empathy", "Grow Others",
-                  "Bridge Across Boundaries", "Act with Integrity", "Make it Simple",
-                  "Lead Change Fearlessly", "Learn and Adapt Fast", "Champion Diversity") #missing autonomy support, and setting boundaries
-all_vars <- c(paste("Self:", competencies), paste("Manager:", competencies), paste("Peer:", competencies), paste("Reports:", competencies))
+
+# | #  | Competency (Corporate Name)  | Academic Behavioural Focus                                                       |
+# | -- | ---------------------------- | -------------------------------------------------------------------------------- |
+# | 1  | **Inspire with Purpose**     | Visionary leadership; communicating meaningful goals (Podsakoff et al., 1990)    |
+# | 2  | **Drive for Results**        | Goal orientation; performance focus (Locke & Latham, 2002)                       |
+# | 3  | **Own the Outcome**          | Accountability; ownership mindset (Grant, 2008)                                  |
+# | 4  | **Speak Up and Listen**      | Psychological safety; openness to voice (Edmondson, 1999)                        |
+# | 5  | **Lead with Empathy**        | Emotional intelligence; supportive leadership (Kabat-Zinn, 2003)                 |
+# | 6  | **Grow Others**              | Coaching and development; servant leadership (Greenleaf, 1977)                   |
+# | 7  | **Bridge Across Boundaries** | Cross-functional collaboration; boundary-spanning leadership (Ernst & Yip, 2009) |
+# | 8  | **Act with Integrity**       | Ethical leadership; fairness and consistency (Brown & Treviño, 2006)             |
+# | 9  | **Make it Simple**           | Clarity, prioritisation, decision-making under complexity (Simon, 1947)          |
+# | 10 | **Lead Change Fearlessly**   | Change orientation; resilience; transformation leadership (Kotter, 1996)         |
+# | 11 | **Learn and Adapt Fast**     | Learning orientation; agility; growth mindset (Dweck, 2006)                      |
+# | 12 | **Champion Diversity**       | Inclusive leadership; bias reduction; fairness (Nishii, 2013)                    |
+
+
+#create common base variable and common source of variation from rating to simulate correlations
+feedback <- leadership_roles %>% 
+  select(employee_id) %>%
+  mutate(
+    general= rnorm(nrow(leadership_roles), 4 , 0.6) %>% pmin(5), 
+    self = (general + rnorm(nrow(leadership_roles), 4.4 , 0.6)  %>% pmin(5) + rnorm(nrow(leadership_roles), 4.4 , 0.6) %>% pmin(5))/3, #assuming slightly lower accuracy for self ratings and therefore lower correlation with other ratings, more nuance to be added at a later stage
+    manager = (general + rnorm(nrow(leadership_roles), 3.9 , 0.6)  %>% pmin(5))/2,
+    peers = (general + rnorm(nrow(leadership_roles), 4.2 , 0.6)  %>% pmin(5))/2,
+    reports = (general + rnorm(nrow(leadership_roles), 4.2 , 0.6)  %>% pmin(5))/2
+  )
 
 #self ratings round(rnorm(12, 4.4, 0.1), 2) 
 #manager ratings round(rnorm(12, 3.9, 0.1), 2) 
 #peer ratings round(rnorm(12, 4.1, 0.1), 2) 
 #report ratings round(rnorm(12, 4.1, 0.1), 2) 
 
-feedback <- leadership_roles %>% 
-  select(employee_id) %>%
+
+#create scale specific scores
+feedback %<>%  
   mutate(
-    `Self: Inspire with Purpose` = rnorm(nrow(leadership_roles), 4.34 , 0.4) %>% round(0) %>% pmin(5),       
-    `Self: Drive for Results` =  rnorm(nrow(leadership_roles), 4.51 , 0.4) %>% round(0) %>% pmin(5),         
-    `Self: Own the Outcome` = rnorm(nrow(leadership_roles), 4.42  , 0.4) %>% round(0) %>% pmin(5),               
-    `Self: Speak Up and Listen` = rnorm(nrow(leadership_roles), 4.43  , 0.4) %>% round(0)  %>% pmin(5),         
-    `Self: Lead with Empathy` = rnorm(nrow(leadership_roles), 4.32  , 0.4) %>% round(0) %>% pmin(5),           
-    `Self: Grow Others` = rnorm(nrow(leadership_roles), 4.30   , 0.4) %>% round(0)  %>% pmin(5),               
-    `Self: Bridge Across Boundaries` = rnorm(nrow(leadership_roles), 4.35  , 0.4) %>% round(0)  %>% pmin(5),     
-    `Self: Act with Integrity` = rnorm(nrow(leadership_roles), 4.37  , 0.4) %>% round(0) %>% pmin(5),        
-    `Self: Make it Simple` = rnorm(nrow(leadership_roles), 4.33 , 0.4) %>% round(0) %>% pmin(5),        
-    `Self: Lead Change Fearlessly` = rnorm(nrow(leadership_roles), 4.47 , 0.4) %>% round(0) %>% pmin(5),      
-    `Self: Learn and Adapt Fast` = rnorm(nrow(leadership_roles), 4.29 , 0.4) %>% round(0) %>% pmin(5),        
-    `Self: Champion Diversity` = rnorm(nrow(leadership_roles), 4.42 , 0.4) %>% round(0) %>% pmin(5),     
+    `Self: Inspire with Purpose` = ((self + 2 * rnorm(nrow(leadership_roles), 4.0 , 0.6)  %>% pmin(5) )/3)  %>% round(0),       
+    `Self: Drive for Results` =  ((self + 2 * rnorm(nrow(leadership_roles), 4.4 , 0.6)  %>% pmin(5) )/3)  %>% round(0),         
+    `Self: Own the Outcome` = ((self + 2 * rnorm(nrow(leadership_roles), 4.4  , 0.6) %>% pmin(5) )/3)  %>% round(0),             
+    `Self: Speak Up and Listen` = ((self + 2 * rnorm(nrow(leadership_roles), 4.0  , 0.6) %>% pmin(5) )/3)  %>% round(0),       
+    `Self: Lead with Empathy` = ((self + 2 * rnorm(nrow(leadership_roles), 4.2  , 0.6)%>% pmin(5) )/3)  %>% round(0),         
+    `Self: Grow Others` = ((self + 2 * rnorm(nrow(leadership_roles), 4.0   , 0.6) %>% pmin(5) )/3)  %>% round(0),             
+    `Self: Bridge Across Boundaries` = ((self + 2 * rnorm(nrow(leadership_roles), 3.6  , 0.6) %>% pmin(5) )/3)  %>% round(0),   
+    `Self: Act with Integrity` = ((self + 2 * rnorm(nrow(leadership_roles), 4.4  , 0.6) %>% pmin(5) )/3)  %>% round(0),      
+    `Self: Make it Simple` = ((self + 2 * rnorm(nrow(leadership_roles), 4.0 , 0.6) %>% pmin(5) )/3)  %>% round(0),      
+    `Self: Lead Change Fearlessly` = ((self + 2 * rnorm(nrow(leadership_roles), 4.4 , 0.6) %>% pmin(5) )/3)  %>% round(0),    
+    `Self: Learn and Adapt Fast` = ((self + 2 * rnorm(nrow(leadership_roles), 4.4 , 0.6) %>% pmin(5) )/3)  %>% round(0),      
+    `Self: Champion Diversity` = ((self + 2 * rnorm(nrow(leadership_roles), 4.2 , 0.6)  %>% pmin(5) )/3)  %>% round(0),   
     
-    `Manager: Inspire with Purpose` = rnorm(nrow(leadership_roles), 3.92 , 0.4) %>% round(0) %>% pmin(5),    
-    `Manager: Drive for Results` = rnorm(nrow(leadership_roles), 4.05 ) %>% round(0) %>% pmin(5),       
-    `Manager: Own the Outcome` = rnorm(nrow(leadership_roles), 3.74 , 0.4) %>% round(0) %>% pmin(5),         
-    `Manager: Speak Up and Listen` = rnorm(nrow(leadership_roles), 3.96 , 0.4 ) %>% round(0) %>% pmin(5),     
-    `Manager: Lead with Empathy` = rnorm(nrow(leadership_roles), 3.84 , 0.4) %>% round(0) %>% pmin(5),       
-    `Manager: Grow Others` = rnorm(nrow(leadership_roles), 4.00  , 0.4) %>% round(0) %>% pmin(5),             
-    `Manager: Bridge Across Boundaries` = rnorm(nrow(leadership_roles), 3.86  , 0.4) %>% round(0) %>% pmin(5),
-    `Manager: Act with Integrity` = rnorm(nrow(leadership_roles), 3.95 , 0.4) %>% round(0) %>% pmin(5),      
-    `Manager: Make it Simple` = rnorm(nrow(leadership_roles), 3.92  , 0.4) %>% round(0) %>% pmin(5),          
-    `Manager: Lead Change Fearlessly` = rnorm(nrow(leadership_roles), 3.97  , 0.4) %>% round(0) %>% pmin(5),  
-    `Manager: Learn and Adapt Fast` = rnorm(nrow(leadership_roles), 3.93  , 0.4) %>% round(0) %>% pmin(5),    
-    `Manager: Champion Diversity` = rnorm(nrow(leadership_roles), 3.74, 0.4) %>% round(0) %>% pmin(5),      
+    `Manager: Inspire with Purpose` = ((manager + 2 * rnorm(nrow(leadership_roles), 4.0 , 0.6)  %>% pmin(5) )/3)  %>% round(0),  
+    `Manager: Drive for Results` = ((manager + 2 * rnorm(nrow(leadership_roles), 4.4, 0.6 )  %>% pmin(5) )/3)  %>% round(0),     
+    `Manager: Own the Outcome` = ((manager + 2 * rnorm(nrow(leadership_roles), 4.4 , 0.6)  %>% pmin(5) )/3)  %>% round(0),       
+    `Manager: Speak Up and Listen` = ((manager + 2 * rnorm(nrow(leadership_roles), 4.0 , 0.6 )  %>% pmin(5) )/3)  %>% round(0),   
+    `Manager: Lead with Empathy` = ((manager + 2 * rnorm(nrow(leadership_roles), 4.2 , 0.6)  %>% pmin(5) )/3)  %>% round(0),     
+    `Manager: Grow Others` = ((manager + 2 * rnorm(nrow(leadership_roles), 4.0  , 0.6)  %>% pmin(5) )/3)  %>% round(0),           
+    `Manager: Bridge Across Boundaries` = ((manager + 2 * rnorm(nrow(leadership_roles), 3.6  , 0.6)  %>% pmin(5) )/3)  %>% round(0),  
+    `Manager: Act with Integrity` = ((manager + 2 * rnorm(nrow(leadership_roles), 4.4 , 0.6)  %>% pmin(5) )/3)  %>% round(0),    
+    `Manager: Make it Simple` = ((manager + 2 * rnorm(nrow(leadership_roles), 4.0  , 0.6)  %>% pmin(5) )/3)  %>% round(0),        
+    `Manager: Lead Change Fearlessly` = ((manager + 2 * rnorm(nrow(leadership_roles), 4.4  , 0.6)  %>% pmin(5) )/3)  %>% round(0),
+    `Manager: Learn and Adapt Fast` = ((manager + 2 * rnorm(nrow(leadership_roles), 4.4  , 0.6)  %>% pmin(5) )/3)  %>% round(0),  
+    `Manager: Champion Diversity` = ((manager + 2 * rnorm(nrow(leadership_roles), 4.2, 0.6)  %>% pmin(5) )/3)  %>% round(0),    
     
-    `Peers: Inspire with Purpose` = rnorm(nrow(leadership_roles), 4.09  , 0.4)  %>% pmin(5),    
-    `Peers: Drive for Results` = rnorm(nrow(leadership_roles), 4.15  )  %>% pmin(5),       
-    `Peers: Own the Outcome` = rnorm(nrow(leadership_roles), 3.99 , 0.4)  %>% pmin(5),         
-    `Peers: Speak Up and Listen` = rnorm(nrow(leadership_roles), 4.23 , 0.4)  %>% pmin(5),     
-    `Peers: Lead with Empathy` = rnorm(nrow(leadership_roles), 4.28  , 0.4)  %>% pmin(5),       
-    `Peers: Grow Others` = rnorm(nrow(leadership_roles), 4.11 , 0.4)  %>% pmin(5),             
-    `Peers: Bridge Across Boundaries` = rnorm(nrow(leadership_roles), 4.14  , 0.4) %>% pmin(5) ,
-    `Peers: Act with Integrity` = rnorm(nrow(leadership_roles), 4.12 , 0.4) %>% pmin(5) ,      
-    `Peers: Make it Simple` = rnorm(nrow(leadership_roles), 3.98  , 0.4)  %>% pmin(5),          
-    `Peers: Lead Change Fearlessly` = rnorm(nrow(leadership_roles), 4.04    , 0.4)  %>% pmin(5),  
-    `Peers: Learn and Adapt Fast` = rnorm(nrow(leadership_roles), 4.19   , 0.4)  %>% pmin(5),    
-    `Peers: Champion Diversity` = rnorm(nrow(leadership_roles), 3.97, 0.4)  %>% pmin(5),  
+    `Peers: Inspire with Purpose` = ((peers + 2 * rnorm(nrow(leadership_roles), 4.0  , 0.6)  %>% pmin(5) )/3) ,    
+    `Peers: Drive for Results` = ((peers + 2 * rnorm(nrow(leadership_roles), 4.4, 0.6 )  %>% pmin(5) )/3) ,       
+    `Peers: Own the Outcome` = ((peers + 2 * rnorm(nrow(leadership_roles), 4.4 , 0.6)  %>% pmin(5) )/3) ,         
+    `Peers: Speak Up and Listen` = ((peers + 2 * rnorm(nrow(leadership_roles), 4.0 , 0.6)  %>% pmin(5) )/3) ,     
+    `Peers: Lead with Empathy` = ((peers + 2 * rnorm(nrow(leadership_roles), 4.2  , 0.6)  %>% pmin(5) )/3) ,       
+    `Peers: Grow Others` = ((peers + 2 * rnorm(nrow(leadership_roles), 4.0 , 0.6)  %>% pmin(5) )/3) ,             
+    `Peers: Bridge Across Boundaries` = ((peers + 2 * rnorm(nrow(leadership_roles), 3.6  , 0.6) %>% pmin(5) )/3) ,
+    `Peers: Act with Integrity` = ((peers + 2 * rnorm(nrow(leadership_roles), 4.4 , 0.6)  %>% pmin(5) )/3) ,      
+    `Peers: Make it Simple` = ((peers + 2 * rnorm(nrow(leadership_roles), 4.0  , 0.6)  %>% pmin(5) )/3) ,          
+    `Peers: Lead Change Fearlessly` = ((peers + 2 * rnorm(nrow(leadership_roles), 4.4    , 0.6)  %>% pmin(5) )/3) ,  
+    `Peers: Learn and Adapt Fast` = ((peers + 2 * rnorm(nrow(leadership_roles), 4.4   , 0.6)  %>% pmin(5) )/3) ,    
+    `Peers: Champion Diversity` = ((peers + 2 * rnorm(nrow(leadership_roles), 4.2, 0.6)  %>% pmin(5) )/3) ,  
     
-    `Reports: Inspire with Purpose` = rnorm(nrow(leadership_roles), 4.11  , 0.4)  %>% pmin(5),    
-    `Reports: Drive for Results` = rnorm(nrow(leadership_roles), 4.20  )  %>% pmin(5),       
-    `Reports: Own the Outcome` = rnorm(nrow(leadership_roles), 4.13  , 0.4)  %>% pmin(5),         
-    `Reports: Speak Up and Listen` = rnorm(nrow(leadership_roles), 3.86  , 0.4  %>% pmin(5)) ,     
-    `Reports: Lead with Empathy` = rnorm(nrow(leadership_roles), 4.19 , 0.4)  %>% pmin(5),       
-    `Reports: Grow Others` = rnorm(nrow(leadership_roles), 4.04 , 0.4)  %>% pmin(5),             
-    `Reports: Bridge Across Boundaries` = rnorm(nrow(leadership_roles), 4.16  , 0.4)  %>% pmin(5),
-    `Reports: Act with Integrity` = rnorm(nrow(leadership_roles), 3.97  , 0.4)  %>% pmin(5),      
-    `Reports: Make it Simple` = rnorm(nrow(leadership_roles), 4.24  , 0.4)  %>% pmin(5),          
-    `Reports: Lead Change Fearlessly` = rnorm(nrow(leadership_roles), 4.11   , 0.4)  %>% pmin(5),  
-    `Reports: Learn and Adapt Fast` = rnorm(nrow(leadership_roles), 4.15    , 0.4)  %>% pmin(5),    
-    `Reports: Champion Diversity` = rnorm(nrow(leadership_roles), 4.13 , 0.4)  %>% pmin(5)
+    `Reports: Inspire with Purpose` = ((reports + 2 * rnorm(nrow(leadership_roles), 4.0  , 0.6)  %>% pmin(5) )/3) ,    
+    `Reports: Drive for Results` = ((reports + 2 * rnorm(nrow(leadership_roles), 4.4, 0.6  )  %>% pmin(5) )/3) ,       
+    `Reports: Own the Outcome` = ((reports + 2 * rnorm(nrow(leadership_roles), 4.4  , 0.6)  %>% pmin(5) )/3) ,         
+    `Reports: Speak Up and Listen` = ((reports + 2 * rnorm(nrow(leadership_roles), 4.0  , 0.6)  %>% pmin(5) )/3) ,     
+    `Reports: Lead with Empathy` = ((reports + 2 * rnorm(nrow(leadership_roles), 4.2 , 0.6)  %>% pmin(5) )/3) ,       
+    `Reports: Grow Others` = ((reports + 2 * rnorm(nrow(leadership_roles), 4.0 , 0.6)  %>% pmin(5) )/3) ,             
+    `Reports: Bridge Across Boundaries` = ((reports + 2 * rnorm(nrow(leadership_roles), 3.6  , 0.6)  %>% pmin(5) )/3) ,
+    `Reports: Act with Integrity` = ((reports + 2 * rnorm(nrow(leadership_roles), 4.4 , 0.6)  %>% pmin(5) )/3) ,      
+    `Reports: Make it Simple` = ((reports + 2 * rnorm(nrow(leadership_roles), 4.0  , 0.6)  %>% pmin(5) )/3) ,          
+    `Reports: Lead Change Fearlessly` = ((reports + 2 * rnorm(nrow(leadership_roles), 4.4   , 0.6)  %>% pmin(5) )/3) ,  
+    `Reports: Learn and Adapt Fast` = ((reports + 2 * rnorm(nrow(leadership_roles), 4.4    , 0.6)  %>% pmin(5) )/3) ,    
+    `Reports: Champion Diversity` = ((reports + 2 * rnorm(nrow(leadership_roles), 4.2 , 0.6)  %>% pmin(5) )/3) 
   )
  
+t.test(feedback$`Self: Inspire with Purpose`, feedback$`Self: Drive for Results`)
+cohens_d(feedback$`Self: Lead with Empathy`, feedback$`Self: Drive for Results`)
 
+
+#explore generated data
+feedback[-1] %>% colMeans()
+corm <- cor(feedback[-1])
+#corrplot.mixed(corm)
+plots <- feedback %>%
+  select(where(is.numeric)) %>%
+  map(~ ggplot(data.frame(x = .x), aes(x = x)) +
+        geom_histogram(bins = 30, fill = "darkred", color = "white") +
+        labs(title = deparse(substitute(.x))) +
+        theme_minimal())
+#ggpairs(feedback[-1])
 
 write_csv(feedback, "hr_data/feedback.csv")
 
-#reduce size of datasets ----
+#add-on application data ----
+#reduce size of dataset 
 applicant_data %<>% 
   filter(start_month >= as_date("2020-01-01"))
+
+#create insufficient interview data
+applicant_data %<>% 
+  mutate(
+    question_1 = case_when(
+      str_detect(stage, "Interview") ~ sample(c(NA_integer_,1:5), size = length(str_detect(stage, "Interview")), replace = TRUE, prob = c(0.99, 0.001, 0.0015, 0.003, 0.003, 0.0015))
+    ), 
+    question_2 = case_when(
+      !is.na(question_1) ~ sample(c(1:5), size = length(str_detect(stage, "Interview")), replace = TRUE, prob = c(0.1, 0.15, 0.3, 0.3, 0.15))
+    ),
+    question_3 = case_when(
+      !is.na(question_1) ~ sample(c(1:5), size = length(str_detect(stage, "Interview")), replace = TRUE, prob = c(0.1, 0.15, 0.3, 0.3, 0.15))
+    )
+  ) 
+
 #write to file
 write_csv(applicant_data, "hr_data/applicant_data.csv")
 
+
+#employee survey data ----
+
+response_rates <- hrsystem_data %>%
+  filter(employee_status == "Current") %>%
+  slice_sample(prop = 0.83)
+
+survey <- response_rates %>%
+  select(employee_id, department, job_level, country) %>%
+  mutate(
+    engagement = rnorm(nrow(response_rates), 5.6 , 0.9) %>% pmin(7), 
+    job = (2 * engagement  + rnorm(nrow(response_rates), 5.6 , 0.9) %>% pmin(7))/3,
+    manager = (2 * engagement + rnorm(nrow(response_rates), 5.6, 0.9)  %>% pmin(7))/3,
+    team = (2 * engagement + rnorm(nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/3,
+    org_lead = (2 * engagement + rnorm(nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/3
+  )
+
+#explore dataset
+corm <- cor(survey[-1:-4])
+corrplot.mixed(corm)
+
+#create item specific scores
+survey %<>%  
+  mutate(
+      `I am proud to work for this company.` = (engagement + engagement + 2 * rnorm(nrow(response_rates), 5.8 , 0.9)  %>% pmin(7))/2,                     #| Engagement              | 5.8          |
+      `I would recommend this company as a great place to work.` = (engagement + engagement + 2 * rnorm(nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/2, #| Engagement              | 5.6          |
+      `I feel motivated to do my best every day.` = (engagement + engagement + 2 * rnorm(nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/2,                #| Engagement              | 5.4          |
+      `I see myself still working here in two years.` = (engagement + engagement + 2 * rnorm(nrow(response_rates), 5.5 , 0.9)  %>% pmin(7))/2,            #| Engagement              | 5.5          |
+      `My work gives me a sense of personal accomplishment.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/2,     #| Engagement              | 5.6          |
+      `I trust the decisions made by senior leadership.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 5.1 , 0.9)  %>% pmin(7))/2,         #| Leadership & Trust      | 5.1          |
+      `Leaders communicate a clear vision for the future.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 5.0 , 0.9)  %>% pmin(7))/2,       #| Leadership & Trust      | 5.0          |
+      `I feel well-informed about what is going on.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 5.2 , 0.9)  %>% pmin(7))/2,             #| Leadership & Trust      | 5.2          |
+      `Senior leaders are visible and approachable.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 4.8 , 0.9)  %>% pmin(7))/2,             #| Leadership & Trust      | 4.8          |
+      `Leadership lives the values of the company.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 5.0 , 0.9)  %>% pmin(7))/2,              #| Leadership & Trust      | 5.0          |
+      `My manager treats me with respect.` = (manager + engagement + 2 * rnorm(nrow(response_rates), 6.0 , 0.9)  %>% pmin(7))/2,                       #| Manager Effectiveness   | 6.0          |
+      `My manager gives me regular and useful feedback.` = (manager + engagement + 2 * rnorm(nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/2,         #| Manager Effectiveness   | 5.3          |
+      `My manager supports my professional development.` = (manager + engagement + 2 * rnorm(nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/2,         #| Manager Effectiveness   | 5.4          |
+      `My manager communicates clearly and effectively.` = (manager + engagement + 2 * rnorm(nrow(response_rates), 5.5 , 0.9)  %>% pmin(7))/2,         #| Manager Effectiveness   | 5.5          |
+      `My manager motivates me to do my best work.` = (manager + engagement + 2 * rnorm(nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/2,              #| Manager Effectiveness   5.6          |
+      `My team works well together.` = (team + engagement + 2 * rnorm(nrow(response_rates), 5.7 , 0.9)  %>% pmin(7))/2,                             #| Team Climate            | 5.7          |
+      `I feel supported by my colleagues.` = (team + engagement + 2 * rnorm(nrow(response_rates), 5.8 , 0.9)  %>% pmin(7))/2,                       #| Team Climate            | 5.8          |
+      `There is a strong sense of trust within my team.` = (team + engagement + 2 * rnorm(nrow(response_rates), 5.5 , 0.9)  %>% pmin(7))/2,         #| Team Climate            | 5.5          |
+      `People on my team help each other succeed.` = (team + engagement + 2 * rnorm(nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/2,               #| Team Climate            | 5.6          |
+      `I feel like I belong on my team.` = (team + engagement + 2 * rnorm(nrow(response_rates), 5.7 , 0.9)  %>% pmin(7))/2,                         #| Team Climate            | 5.7          |
+      `I have the tools and resources I need.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/2,                   #| Enablement / Autonomy   | 5.6          |
+      `I understand what is expected of me.` = (job + engagement + 2 * rnorm(nrow(response_rates), 6.0 , 0.9)  %>% pmin(7))/2,                     #| Enablement / Autonomy   | 6.0          |
+      `I can make decisions that affect my work.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.5 , 0.9)  %>% pmin(7))/2,                #| Enablement / Autonomy   | 5.5          |
+      `I have the autonomy I need to be effective.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/2,              #| Enablement / Autonomy   | 5.6          |
+      `I can be myself at work without fear.` = (manager + team + 2 * rnorm(nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/2,                    #| Enablement / Autonomy   | 5.4          |
+      `I have access to learning and development opportunities.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/2, #| Career & Development    | 5.3          |
+      `I am satisfied with the career opportunities available.` = (job + engagement + 2 * rnorm(nrow(response_rates), 4.9 , 0.9)  %>% pmin(7))/2,  #| Career & Development    | 4.9          |
+      `My development is a priority for my manager.` = (manager + engagement + 2 * rnorm(nrow(response_rates), 5.2 , 0.9)  %>% pmin(7))/2,             #| Career & Development    | 5.2          |
+      `I am encouraged to develop new skills.` = (manager + engagement + 2 * rnorm(nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/2,                   #| Career & Development    | 5.4          |
+      `I have a clear understanding of how to progress.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.0 , 0.9)  %>% pmin(7))/2,         #| Career & Development    | 5.0          |
+      `I feel valued for the work I do.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/2,                         #| Recognition             | 5.4          |
+      `I receive recognition when I do good work.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/2,               #| Recognition             | 5.3          |
+      `My contributions are acknowledged by my manager.` = (manager + engagement + 2 * rnorm(nrow(response_rates), 5.5 , 0.9)  %>% pmin(7))/2,         #| Recognition             | 5.5          |
+      `I maintain a healthy work-life balance.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/2,                  #| Wellbeing               | 5.3          |
+      `My workload is manageable.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.1 , 0.9)  %>% pmin(7))/2,                               #| Wellbeing               | 5.1          |
+      `The company cares about my wellbeing.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 5.2 , 0.9)  %>% pmin(7))/2,                    #| Wellbeing               | 5.2          |
+      `I feel comfortable taking time off.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.8 , 0.9)  %>% pmin(7))/2,                      #| Wellbeing               | 5.8          |
+      `I can talk openly about stress or mental health.` = (manager + team + 2 * rnorm(nrow(response_rates), 5.0 , 0.9)  %>% pmin(7))/2,         #| Wellbeing               | 5.0          |
+      `I feel treated fairly regardless of background.` = (manager + team + 2 * rnorm(nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/2,          #| D\&I / Belonging        | 5.6          |
+      `Diverse perspectives are valued in my team.` = (team + engagement + 2 * rnorm(nrow(response_rates), 5.5 , 0.9)  %>% pmin(7))/2,              #| D\&I / Belonging        | 5.5          |
+      `I feel a sense of belonging.` = (team + engagement + 2 * rnorm(nrow(response_rates), 5.5 , 0.9)  %>% pmin(7))/2,                             #| D\&I / Belonging        | 5.5          |
+      `The company fosters an inclusive environment.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/2,            #| D\&I / Belonging        | 5.4          |
+      `The company adapts quickly to change.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 5.0 , 0.9)  %>% pmin(7))/2,                    #| Change & Agility        | 5.0          |
+      `I’m comfortable with the pace of change.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 5.2 , 0.9)  %>% pmin(7))/2,                 #| Change & Agility        | 5.2          |
+      `Innovation is encouraged.` = (org_lead + manager + 2 * rnorm(nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/2,                                #| Change & Agility        | 5.3          |
+      `We can respond to future challenges.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/2,                     #| Change & Agility        | 5.4          |
+      `Communication across departments is effective.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 4.8 , 0.9)  %>% pmin(7))/2,           #| Communication           | 4.8          |
+      `I know where to find needed information.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/2,                 #| Communication           | 5.3          |
+      `Feedback from employees is taken seriously.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 4.9 , 0.9)  %>% pmin(7))/2,              #| Communication           | 4.9          |
+      `Internal communications are clear and timely.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 5.2 , 0.9)  %>% pmin(7))/2,            #| Communication           | 5.2          |
+      `I am fairly compensated.` = (job + engagement + 2 * rnorm(nrow(response_rates), 4.8 , 0.9)  %>% pmin(7))/2,                                 #| Compensation & Benefits | 4.8          |
+      `The benefits meet my needs.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.2 , 0.9)  %>% pmin(7))/2,                              #| Compensation & Benefits | 5.2          |
+      `My pay reflects my performance.` = (job + engagement + 2 * rnorm(nrow(response_rates), 4.6 , 0.9)  %>% pmin(7))/2,                          #| Compensation & Benefits | 4.6          |
+      `People here act with integrity.` = (job + engagement + 2 * rnorm(nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/2,                          #| Ethics & Values         | 5.6          |
+      `The company lives its values.` = (org_lead + engagement + 2 * rnorm(nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/2                            #| Ethics & Values         | 5.3          |
+  )
+      
+corm <- cor(survey[-1:-4])
+#round values at the end
+
 #to do list ----
-#for next week
-#check 360 data again to see what I tried to do there
-#look at hiring data again to make sure the data reflects internal hiring (if not too complicated)
-#psychometric data - for graduate programmes? (potentially a separate dataset that cant be linked to anything else, including effects for low resilience, high conscienciousness, low openness, high aggreeableness, medium extraversion)
-#create employee survey (and maybe pulse survey?-probs too much)
+#benchmark data survey?
 #outcome data (sales, customer service, billed hours?)
 #turnover by wellbeing score
 #differences depending on performance
-#leave out interview data and wait for recommendation from students in presentation
-#reduce range for both datasets
+
 
 #maybe later
-#blue collar department (distribution)
+#look at hiring data again to make sure the data reflects internal hiring (if not too complicated)
+
 #find a way to model contingency of starters following leavers for senior leaders
 #qualitative comments?
 #skewed normal distributions for e.g. tenure
 #5% promotion rate
 #2.5% salary increases
 #if leaver, last event -> left
-
+#reduce range for both datasets
+#(and maybe pulse survey?-probs too much)
 
 #done
 #adverse impact against women 
@@ -586,10 +761,13 @@ write_csv(applicant_data, "hr_data/applicant_data.csv")
 #add gender data
 #scores for assessment stage? / maybe just general fit score on assessment?
 #performance data skew (range restriction for validity of assessments?)
-
-#comments
-
-
+#blue collar department (distribution)
+#check 360 data again to see what I tried to do there
+#leave out interview data and wait for recommendation from students in presentation
+#psychometric data - for graduate programmes? (potentially a separate dataset that cant be linked to anything else, including effects for low resilience, high conscienciousness, low openness, high aggreeableness, medium extraversion)
+#create employee survey 
+#solve problem with 360 data
+#25 performance data only for current employees
 
 #under construction ----
 
