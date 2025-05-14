@@ -10,6 +10,8 @@ hrsystem_data <- read_csv("hr_data/hrsystem_data.csv")
 applicant_data <- read_csv("hr_data/applicant_data.csv")
 feedback_data <- read_csv("hr_data/feedback.csv")
 assessmentcenter_data <- read_csv("hr_data/assessmentcenter_data.csv")
+personality_data <- read_csv("hr_data/personality_data.csv")
+employeesurvey_data <- read_csv(survey, "hr_data/employeesurvey_data.csv")
 
 #visualisations ----
 
