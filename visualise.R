@@ -11,7 +11,7 @@ applicant_data <- read_csv("hr_data/applicant_data.csv")
 feedback_data <- read_csv("hr_data/feedback.csv")
 assessmentcenter_data <- read_csv("hr_data/assessmentcenter_data.csv")
 personality_data <- read_csv("hr_data/personality_data.csv")
-employeesurvey_data <- read_csv(survey, "hr_data/employeesurvey_data.csv")
+employeesurvey_data <- read_csv("hr_data/employeesurvey_data.csv")
 
 #visualisations ----
 
@@ -149,14 +149,14 @@ assessmentcenter_data %>%
 
 #   Ist das Assessment Center ein valides Instrument, um Performance vorherzusagen? 
 assessmentcenter_data %>% 
-  left_join(hrsystem_data) %>%
-  ggplot(aes(assessmentcenter_score, performance_25)) +
+  left_join(hrsystem_data %>% select(employee_id, performance_24)) %>%
+  ggplot(aes(assessmentcenter_score, performance_24)) +
   geom_point() +
   geom_smooth(method = lm) #sieht schon mal gut aus, aber hier brauchen wir einen statistsichen Test
 
 #   Hat ein Geschlecht bessere Performance Bewertungen?
 hrsystem_data %>%
-  ggplot(aes(performance_25, fill = gender)) +
+  ggplot(aes(performance_24, fill = gender)) +
   geom_histogram(position = "identity", alpha = 0.5) #weder Histogramm noch Density machen hier mega viel Sinn, auch ein barchart hat Nachteile, das würde man am besten mit einer Tabelle lösen. aber auch hier würde man einen statistischen Test machen wollen
 
 

@@ -5,6 +5,8 @@ library(tidyverse)
 library(magrittr)
 library(corrplot)
 library(effectsize)
+library(httr)
+library(jsonlite)
 
 #Core HR System Dataset ----
 #load example proportions
@@ -141,7 +143,7 @@ write_csv(hrsystem_data, "hr_data/hrsystem_data.csv")
 #recruitment data ----
 #very simple simulation of recruitment data, demographic variables will be added at a later stage and some randomness will be introduced to the number of candidates per stage  
   
-  
+set.seed(187)  
 #helper function to generate ids
 generate_ids <- function(n, prefix="emp") {
     sprintf("%s%05d", prefix, seq(1, n))
@@ -419,6 +421,7 @@ applicant_data %<>% left_join(temp_gender_combined)
 write_csv(applicant_data, "hr_data/applicant_data.csv")
 
 #assessment center dataset ----
+set.seed(187)
 assessmentcenter_data <- applicant_data %>% 
   filter(department == "Sales", job_level == "Entry Level/ Manual", stage == "Stage 4: Assessment Center") %>%
   rowwise() %>%
@@ -464,6 +467,7 @@ cor(performance_assessment$assessmentcenter_score, performance_assessment$perfor
 hrsystem_data %<>% left_join(performance_assessment %>% select(employee_id, performance_24)) 
 
 #personality data ----
+set.seed(187)
 personality_hired <- tibble(
   Test_id = paste0("test", 1:nrow(assessmentcenter_data %>% filter(status == "hired")) + 100000), 
   Adjustment = rnorm(nrow(assessmentcenter_data %>% filter(status == "hired")), mean = 68, sd = 10) %>% pmin(100),  # mittel
@@ -517,6 +521,7 @@ write_csv(hrsystem_data, "hr_data/hrsystem_data.csv")
 
 
 #360 degree feedback data ----
+set.seed(187)
 leadership_roles <- hrsystem_data %>%
   filter(job_level %in% c("Manager/ Senior Specialist", "Director/ Head of") & employee_status == "Current") %>%
   slice_sample(prop = 0.6)
@@ -631,6 +636,7 @@ write_csv(feedback, "hr_data/feedback.csv")
 
 #add-on application data ----
 #reduce size of dataset 
+set.seed(187)
 applicant_data %<>% 
   filter(start_month >= as_date("2020-01-01"))
 
@@ -638,7 +644,7 @@ applicant_data %<>%
 applicant_data %<>% 
   mutate(
     question_1 = case_when(
-      str_detect(stage, "Interview") ~ sample(c(NA_integer_,1:5), size = length(str_detect(stage, "Interview")), replace = TRUE, prob = c(0.99, 0.001, 0.0015, 0.003, 0.003, 0.0015))
+      str_detect(stage, "Interview") ~ sample(c(NA_integer_,1:5), size = length(str_detect(stage, "Interview")), replace = TRUE, prob = c(1.19, 0.001, 0.0015, 0.003, 0.003, 0.0015))
     ), 
     question_2 = case_when(
       !is.na(question_1) ~ sample(c(1:5), size = length(str_detect(stage, "Interview")), replace = TRUE, prob = c(0.1, 0.15, 0.3, 0.3, 0.15))
@@ -653,6 +659,7 @@ write_csv(applicant_data, "hr_data/applicant_data.csv")
 
 
 #employee survey data ----
+set.seed(187)
 response_rates <- hrsystem_data %>%
   mutate(
     start_date = mdy(start_date), 
@@ -664,11 +671,11 @@ response_rates <- hrsystem_data %>%
 survey <- response_rates %>%
   select(employee_id, department, job_level, country) %>%
   mutate(
-    engagement = rnorm(nrow(response_rates), 6 , 0.9) %>% pmin(7), 
-    job = (engagement  + rnorm(nrow(response_rates), 6 , 0.9) %>% pmin(7))/3,
-    manager = (engagement + rnorm(nrow(response_rates), 6, 0.9)  %>% pmin(7))/3,
-    team = (engagement + rnorm(nrow(response_rates), 6 , 0.9)  %>% pmin(7))/3,
-    org_lead = (engagement + rnorm(nrow(response_rates), 6 , 0.9)  %>% pmin(7))/3
+    engagement = rnorm(nrow(response_rates), 6.0 , 2) %>% pmin(7), 
+    job = (engagement  + rnorm(nrow(response_rates), 6.0 , 2) %>% pmin(7))/2, 
+    manager = (engagement + rnorm(nrow(response_rates), 6.0, 2)  %>% pmin(7))/2, 
+    team = (engagement + rnorm(nrow(response_rates), 6.0 , 2)  %>% pmin(7))/2,
+    org_lead = (engagement + rnorm(nrow(response_rates), 6.0 , 2)  %>% pmin(7))/2 
   )
 
 #explore dataset
@@ -678,60 +685,61 @@ corm <- cor(survey[-1:-4])
 #create item specific scores
 survey %<>%  
   mutate(
-      `I would recommend this company as a great place to work.` = ( engagement + engagement  + rnorm(nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/3, #small + #| Engagement              | 5.6          |
-      `I feel motivated to do my best every day.` = ( engagement + engagement  + rnorm(nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/3,  #small +              #| Engagement              | 5.4          |
-      `I see myself still working here in two years.` = ( engagement + engagement  + rnorm(nrow(response_rates), 5.0 , 0.9)  %>% pmin(7))/3,   #medium -          #| Engagement              | 5.5          |
-      `My work gives me a sense of personal accomplishment.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 6.1 , 0.9)  %>% pmin(7))/4,  #medium +  #| Engagement              | 5.6          |
-      `I trust the decisions made by senior leadership.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.3 , 0.9)  %>% pmin(7))/4, #large        #| Leadership & Trust      | 5.1          |
-      `Leaders communicate a clear vision for the future.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 5.0 , 0.9)  %>% pmin(7))/4,       #| Leadership & Trust      | 5.0          |
-      `I feel well-informed about what is going on.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 5.0 , 0.9)  %>% pmin(7))/4,   #small          #| Leadership & Trust      | 5.2          |
-      `Senior leaders are visible and approachable.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.3 , 0.9)  %>% pmin(7))/4,   #medium          #| Leadership & Trust      | 4.8          |
-      `Leadership lives the values of the company.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.8 , 0.9)  %>% pmin(7))/4,    #small          #| Leadership & Trust      | 5.0          |
-      `My manager treats me with respect.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 6.5 , 0.9)  %>% pmin(7))/4,              #medium         #| Manager Effectiveness   | 6.0          |
-      `My manager gives me regular and useful feedback.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/4,         #| Manager Effectiveness   | 5.3          |
-      `My manager supports my professional development.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 5.9 , 0.9)  %>% pmin(7))/4, #medium       #| Manager Effectiveness   | 5.4          |
-      `My manager communicates clearly and effectively.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/4, #small        #| Manager Effectiveness   | 5.5          |
-      `My manager motivates me to do my best work.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/4,              #| Manager Effectiveness   5.6          |
-      `My team works well together.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 5.7 , 0.9)  %>% pmin(7))/4,                             #| Team Climate            | 5.7          |
-      `I feel supported by my colleagues.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 5.8 , 0.9)  %>% pmin(7))/4,                       #| Team Climate            | 5.8          |
-      `There is a strong sense of trust within my team.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 5.5 , 0.9)  %>% pmin(7))/4,         #| Team Climate            | 5.5          |
-      `People on my team help each other succeed.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 5.6 , 0.9)  %>% pmin(7))/4,               #| Team Climate            | 5.6          |
-      `I feel like I belong on my team.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 5.7 , 0.9)  %>% pmin(7))/4,                         #| Team Climate            | 5.7          |
-      `I have the tools and resources I need.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.1 , 0.9)  %>% pmin(7))/4, #medium                  #| Enablement / Autonomy   | 5.6          |
-      `I understand what is expected of me.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.5 , 0.9)  %>% pmin(7))/4,  #medium                   #| Enablement / Autonomy   | 6.0          |
-      `I can make decisions that affect my work.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 4.3 , 0.9)  %>% pmin(7))/4, #large               #| Enablement / Autonomy   | 5.5          |
-      `I have the autonomy I need to be effective.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 4.8 , 0.9)  %>% pmin(7))/4, #large             #| Enablement / Autonomy   | 5.6          |
-      `I can be myself at work without fear.` = ( engagement + manager + team + 2 * rnorm (nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/5,                    #| Enablement / Autonomy   | 5.4          |
-      `I have access to learning and development opportunities.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/4, #| Career & Development    | 5.3          |
-      `I am satisfied with the career opportunities available.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/4, # medium  #| Career & Development    | 4.9          |
-      `My development is a priority for my manager.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/4,  #small           #| Career & Development    | 5.2          |
-      `I am encouraged to develop new skills.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 5.9 , 0.9)  %>% pmin(7))/4,  #medium                 #| Career & Development    | 5.4          |
-      `I have a clear understanding of how to progress.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.5 , 0.9)  %>% pmin(7))/4, #medium       #| Career & Development    | 5.0          |
-      `I feel valued for the work I do.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.2 , 0.9)  %>% pmin(7))/4,  #small -                  #| Recognition             | 5.4          |
-      `I receive recognition when I do good work.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.8 , 0.9)  %>% pmin(7))/4, #medium +             #| Recognition             | 5.3          |
-      `My contributions are acknowledged by my manager.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 5.5 , 0.9)  %>% pmin(7))/4,         #| Recognition             | 5.5          |
-      `I maintain a healthy work-life balance.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 4.5 , 0.9)  %>% pmin(7))/4,  #large -                #| Wellbeing               | 5.3          |
-      `My workload is manageable.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 4.3 , 0.9)  %>% pmin(7))/4,   #large -                            #| Wellbeing               | 5.1          |
-      `The company cares about my wellbeing.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 5.2 , 0.9)  %>% pmin(7))/4, #large -                   #| Wellbeing               | 5.2          |
-      `I feel comfortable taking time off.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/4, #medium -                   #| Wellbeing               | 5.8          |
-      `I can talk openly about stress or mental health.` = ( engagement + manager + team + 2 * rnorm (nrow(response_rates), 4.5 , 0.9)  %>% pmin(7))/5, #medium -        #| Wellbeing               | 5.0          |
-      `I feel treated fairly regardless of background.` = ( engagement + manager + team + 2 * rnorm (nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/5, #small -         #| D\&I / Belonging        | 5.6          |
-      `Diverse perspectives are valued in my team.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/4,  #small -            #| D\&I / Belonging        | 5.5          |
-      `I feel a sense of belonging.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 6 , 0.9)  %>% pmin(7))/4,  #medium +                           #| D\&I / Belonging        | 5.5          |
-      `The company fosters an inclusive environment.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 5.4 , 0.9)  %>% pmin(7))/4,            #| D\&I / Belonging        | 5.4          |
-      `The company adapts quickly to change.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 5.5 , 0.9)  %>% pmin(7))/4,  #medium -                  #| Change & Agility        | 5.0          |
-      `I am comfortable with the pace of change.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 5.0 , 0.9)  %>% pmin(7))/4, #small -                #| Change & Agility        | 5.2          |
-      `Innovation is encouraged.` = ( engagement + org_lead + manager + 2 * rnorm (nrow(response_rates), 6.1 , 0.9)  %>% pmin(7))/5, #large +                               #| Change & Agility        | 5.3          |
-      `We can respond to future challenges.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.9 , 0.9)  %>% pmin(7))/4,  #medium -                   #| Change & Agility        | 5.4          |
-      `Communication across departments is effective.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.0 , 0.9)  %>% pmin(7))/4,  #large-         #| Communication           | 4.8          |
-      `I know where to find needed information.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 4.8 , 0.9)  %>% pmin(7))/4,  #medium -               #| Communication           | 5.3          |
-      `Feedback from employees is taken seriously.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.9 , 0.9)  %>% pmin(7))/4,              #| Communication           | 4.9          |
-      `Internal communications are clear and timely.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.4 , 0.9)  %>% pmin(7))/4, #large -           #| Communication           | 5.2          |
-      `I am fairly compensated.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.0 , 0.9)  %>% pmin(7))/4, #small +                                #| Compensation & Benefits | 4.8          |
-      `The benefits meet my needs.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.2 , 0.9)  %>% pmin(7))/4,                              #| Compensation & Benefits | 5.2          |
-      `My pay reflects my performance.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.1 , 0.9)  %>% pmin(7))/4,  #medium +                        #| Compensation & Benefits | 4.6          |
-      `People here act with integrity.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 6.4 , 0.9)  %>% pmin(7))/4,  #large +                        #| Ethics & Values         | 5.6          |
-      `The company lives its values.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 5.3 , 0.9)  %>% pmin(7))/4                            #| Ethics & Values         | 5.3          |
+      `I am proud to work for this company.` =  ( engagement + engagement  + rnorm(nrow(response_rates), 5.3 , 2)  %>% pmin(7))/3, #small - #| Engagement              | 5.5          |
+      `I would recommend this company as a great place to work.` = ( engagement + engagement  + rnorm(nrow(response_rates), 5.4 , 2)  %>% pmin(7))/3, #small - #| Engagement              | 5.6          |
+      `I feel motivated to do my best every day.` = ( engagement + engagement  + rnorm(nrow(response_rates), 5.6 , 2)  %>% pmin(7))/3,  #small +              #| Engagement              | 5.4          |
+      `I see myself still working here in two years.` = ( engagement + engagement  + rnorm(nrow(response_rates), 4.1 , 2)  %>% pmin(7))/3,   #very large -          #| Engagement              | 5.5          |
+      `My work gives me a sense of personal accomplishment.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 6.8 , 2)  %>% pmin(7))/4,  #very large +  #| Engagement              | 5.6          |
+      `I trust the decisions made by senior leadership.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.1 , 2)  %>% pmin(7))/4, #very large        #| Leadership & Trust      | 5.1          |
+      `Leaders communicate a clear vision for the future.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 5.0 , 2)  %>% pmin(7))/4,       #| Leadership & Trust      | 5.0          |
+      `I feel well-informed about what is going on.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 5.0 , 2)  %>% pmin(7))/4,   #small          #| Leadership & Trust      | 5.2          |
+      `Senior leaders are visible and approachable.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4 , 2)  %>% pmin(7))/4,   #large -         #| Leadership & Trust      | 4.8          |
+      `Leadership lives the values of the company.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.8 , 2)  %>% pmin(7))/4,    #small          #| Leadership & Trust      | 5.0          |
+      `My manager treats me with respect.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 7 , 2)  %>% pmin(7))/4,              #very large         #| Manager Effectiveness   | 6.0          |
+      `My manager gives me regular and useful feedback.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 5.3 , 2)  %>% pmin(7))/4,         #| Manager Effectiveness   | 5.3          |
+      `My manager supports my professional development.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 6.6 , 2)  %>% pmin(7))/4, #very large       #| Manager Effectiveness   | 5.4          |
+      `My manager communicates clearly and effectively.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 5.3 , 2)  %>% pmin(7))/4, #small        #| Manager Effectiveness   | 5.5          |
+      `My manager motivates me to do my best work.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 6.1 , 2)  %>% pmin(7))/4, #medium             #| Manager Effectiveness   5.6          |
+      `My team works well together.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 6.9 , 2)  %>% pmin(7))/4,  #very large                           #| Team Climate            | 5.7          |
+      `I feel supported by my colleagues.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 7 , 2)  %>% pmin(7))/4, #very large +                      #| Team Climate            | 5.8          |
+      `There is a strong sense of trust within my team.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 7 , 2)  %>% pmin(7))/4, #very large +        #| Team Climate            | 5.5          |
+      `People on my team help each other succeed.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 7 , 2)  %>% pmin(7))/4,  #large +             #| Team Climate            | 5.6          |
+      `I feel like I belong on my team.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 7 , 2)  %>% pmin(7))/4, #very large +                          #| Team Climate            | 5.7          |
+      `I have the tools and resources I need.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.1 , 2)  %>% pmin(7))/4, #medium +                 #| Enablement / Autonomy   | 5.6          |
+      `I understand what is expected of me.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.5 , 2)  %>% pmin(7))/4,  #medium                   #| Enablement / Autonomy   | 6.0          |
+      `I can make decisions that affect my work.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 4.3 , 2)  %>% pmin(7))/4, #large               #| Enablement / Autonomy   | 5.5          |
+      `I have the autonomy I need to be effective.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 4.4 , 2)  %>% pmin(7))/4, #very large             #| Enablement / Autonomy   | 5.6          |
+      `I can be myself at work without fear.` = ( engagement + manager + team + 3 * rnorm (nrow(response_rates), 5.4 , 2)  %>% pmin(7))/6,                    #| Enablement / Autonomy   | 5.4          |
+      `I have access to learning and development opportunities.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.3 , 2)  %>% pmin(7))/4, #| Career & Development    | 5.3          |
+      `I am satisfied with the career opportunities available.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.4 , 2)  %>% pmin(7))/4, # medium  #| Career & Development    | 4.9          |
+      `My development is a priority for my manager.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 5.4 , 2)  %>% pmin(7))/4,  #small           #| Career & Development    | 5.2          |
+      `I am encouraged to develop new skills.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 5.9 , 2)  %>% pmin(7))/4,  #medium                 #| Career & Development    | 5.4          |
+      `I have a clear understanding of how to progress.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.5 , 2)  %>% pmin(7))/4, #medium       #| Career & Development    | 5.0          |
+      `I feel valued for the work I do.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.2 , 2)  %>% pmin(7))/4,  #small -                  #| Recognition             | 5.4          |
+      `I receive recognition when I do good work.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.8 , 2)  %>% pmin(7))/4, #medium +             #| Recognition             | 5.3          |
+      `My contributions are acknowledged by my manager.` = ( engagement + manager  + 2 * rnorm (nrow(response_rates), 6.5 , 2)  %>% pmin(7))/4, #very large +        #| Recognition             | 5.5          |
+      `I maintain a healthy work-life balance.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 3.5 , 2)  %>% pmin(7))/4,  #very large -                #| Wellbeing               | 5.3          |
+      `My workload is manageable.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 3.2 , 2)  %>% pmin(7))/4,   #very large -                            #| Wellbeing               | 5.1          |
+      `The company cares about my wellbeing.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.2 , 2)  %>% pmin(7))/4, #very large -                   #| Wellbeing               | 5.2          |
+      `I feel comfortable taking time off.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5 , 2)  %>% pmin(7))/4, #large -                   #| Wellbeing               | 5.8          |
+      `I can talk openly about stress or mental health.` = ( engagement + manager + team + 3 * rnorm (nrow(response_rates), 3.5 , 2)  %>% pmin(7))/6, #very large -        #| Wellbeing               | 5.0          |
+      `I feel treated fairly regardless of background.` = ( engagement + manager + team + 3 * rnorm (nrow(response_rates), 6.4 , 2)  %>% pmin(7))/6, #medium +       #| D\&I / Belonging        | 5.6          |
+      `Diverse perspectives are valued in my team.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 5.3 , 2)  %>% pmin(7))/4,  #small -            #| D\&I / Belonging        | 5.5          |
+      `I feel a sense of belonging.` = ( engagement + team  + 2 * rnorm (nrow(response_rates), 6.5 , 2)  %>% pmin(7))/4,  #very large +                           #| D\&I / Belonging        | 5.5          |
+      `The company fosters an inclusive environment.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 5.4 , 2)  %>% pmin(7))/4,            #| D\&I / Belonging        | 5.4          |
+      `The company adapts quickly to change.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.2 , 2)  %>% pmin(7))/4,  #large -                  #| Change & Agility        | 5.0          |
+      `I am comfortable with the pace of change.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.0 , 2)  %>% pmin(7))/4, #very large -                #| Change & Agility        | 5.2          |
+      `Innovation is encouraged.` = ( engagement + org_lead + manager + 3 * rnorm (nrow(response_rates), 6.1 , 2)  %>% pmin(7))/6, #large +                               #| Change & Agility        | 5.3          |
+      `We can respond to future challenges.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.4 , 2)  %>% pmin(7))/4,  #very large -                   #| Change & Agility        | 5.4          |
+      `Communication across departments is effective.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 3.6 , 2)  %>% pmin(7))/4,  #very large-         #| Communication           | 4.8          |
+      `I know where to find needed information.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 4.3 , 2)  %>% pmin(7))/4,  #very large -               #| Communication           | 5.3          |
+      `Feedback from employees is taken seriously.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 3.5 , 2)  %>% pmin(7))/4, #very large -            #| Communication           | 4.9          |
+      `Internal communications are clear and timely.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 4.4 , 2)  %>% pmin(7))/4, #large -           #| Communication           | 5.2          |
+      `I am fairly compensated.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.0 , 2)  %>% pmin(7))/4, #small +                                #| Compensation & Benefits | 4.8          |
+      `The benefits meet my needs.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 5.2 , 2)  %>% pmin(7))/4,                              #| Compensation & Benefits | 5.2          |
+      `My pay reflects my performance.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 4.8 , 2)  %>% pmin(7))/4,  #small +                        #| Compensation & Benefits | 4.6          |
+      `People here act with integrity.` = ( engagement + job  + 2 * rnorm (nrow(response_rates), 7 , 2)  %>% pmin(7))/4,  #very large +                        #| Ethics & Values         | 5.6          |
+      `The company lives its values.` = ( engagement + org_lead  + 2 * rnorm (nrow(response_rates), 5.3 , 2)  %>% pmin(7))/4                            #| Ethics & Values         | 5.3          |
   )
       
 corm <- cor(survey %>% select(where(is.numeric)), use = "pairwise.complete.obs") %>% round(2)
@@ -764,60 +772,61 @@ survey_np <- survey %>%
 
 survey_wp %<>%  
   mutate(
-    `I would recommend this company as a great place to work.`= (9 * `I would recommend this company as a great place to work.` + (performance_24 + 2)) / 10,
-    `I feel motivated to do my best every day.`= (8.5 *  `I feel motivated to do my best every day.` + 1.5 * (performance_24 + 2)) / 10, #key predictor 
-    `I see myself still working here in two years.`= (9 * `I see myself still working here in two years.` + (performance_24 + 2)) / 10,
-    `My work gives me a sense of personal accomplishment.`= (9 * `My work gives me a sense of personal accomplishment.` + (performance_24 + 2)) / 10,
-    `I trust the decisions made by senior leadership.`= (9 * `I trust the decisions made by senior leadership.` + (performance_24 + 2)) / 10,
-    `Leaders communicate a clear vision for the future.`= (9 * `Leaders communicate a clear vision for the future.` + (performance_24 + 2)) / 10,
-    `I feel well-informed about what is going on.`= (9 * `I feel well-informed about what is going on.` + (performance_24 + 2)) / 10,
-    `Senior leaders are visible and approachable.`= (9 * `Senior leaders are visible and approachable.` + (performance_24 + 2)) / 10,
-    `Leadership lives the values of the company.`= (9 *  `Leadership lives the values of the company.` + (performance_24 + 2)) / 10,
-    `My manager treats me with respect.`= (9 * `My manager treats me with respect.` + (performance_24 + 2)) / 10, 
-    `My manager gives me regular and useful feedback.`= (8.5 * `My manager gives me regular and useful feedback.` + 1.5 * (performance_24 + 2)) / 10, #key predictor
-    `My manager supports my professional development.`= (9 * `My manager supports my professional development.` + (performance_24 + 2)) / 10,
-    `My manager communicates clearly and effectively.`= (9 * `My manager communicates clearly and effectively.` + (performance_24 + 2)) / 10,
-    `My manager motivates me to do my best work.`= (9 * `My manager motivates me to do my best work.` + (performance_24 + 2)) / 10,
-    `My team works well together.`= (9 * `My team works well together.` + (performance_24 + 2)) / 10,
-    `I feel supported by my colleagues.`= (9 * `I feel supported by my colleagues.` + (performance_24 + 2)) / 10,                    
-    `There is a strong sense of trust within my team.`= (9 * `There is a strong sense of trust within my team.` + (performance_24 + 2)) / 10, 
-    `People on my team help each other succeed.`= (9 *  `People on my team help each other succeed.` + (performance_24 + 2)) / 10, 
-    `I feel like I belong on my team.`= (9 * `I feel like I belong on my team.` + (performance_24 + 2)) / 10,
-    `I have the tools and resources I need.`= (8.5 * `I have the tools and resources I need.` + 1.5 * (performance_24 + 2)) / 10, #key predictors
-    `I understand what is expected of me.`= (8.5 * `I understand what is expected of me.` + 1.5 * (performance_24 + 2)) / 10, #key predictor
-    `I can make decisions that affect my work.`= (9 * `I can make decisions that affect my work.` + (performance_24 + 2)) / 10, 
-    `I have the autonomy I need to be effective.`= (8.5 * `I have the autonomy I need to be effective.` + 1.5 * (performance_24 + 2)) / 10, #key predictor
-    `I can be myself at work without fear.`= (9 * `I can be myself at work without fear.` + (performance_24 + 2)) / 10,
-    `I have access to learning and development opportunities.`= (9 * `I have access to learning and development opportunities.` + (performance_24 + 2)) / 10,
-    `I am satisfied with the career opportunities available.`= (9 * `I am satisfied with the career opportunities available.` + (performance_24 + 2)) / 10,
-    `My development is a priority for my manager.`= (9 * `My development is a priority for my manager.` + (performance_24 + 2)) / 10,
-    `I am encouraged to develop new skills.`= (9 *  `I am encouraged to develop new skills.` + (performance_24 + 2)) / 10,
-    `I have a clear understanding of how to progress.`= (9 * `I have a clear understanding of how to progress.` + (performance_24 + 2)) / 10,
-    `I feel valued for the work I do.`= (9 * `I feel valued for the work I do.` + (performance_24 + 2)) / 10,
-    `I receive recognition when I do good work.`= (9 * `I receive recognition when I do good work.` + (performance_24 + 2)) / 10,
-    `My contributions are acknowledged by my manager.`= (8.5 * `My contributions are acknowledged by my manager.` + 1.5 * (performance_24 + 2)) / 10, 
-    `I maintain a healthy work-life balance.`= (9 * `I maintain a healthy work-life balance.` + (performance_24 + 2)) / 10,
-    `My workload is manageable.`= (9 *  `My workload is manageable.` + (performance_24 + 2)) / 10,
-    `The company cares about my wellbeing.`= (9 * `The company cares about my wellbeing.` + (performance_24 + 2)) / 10,
-    `I feel comfortable taking time off.`= (9 * `I feel comfortable taking time off.` + (performance_24 + 2)) / 10,
-    `I can talk openly about stress or mental health.`= (9 * `I can talk openly about stress or mental health.` + (performance_24 + 2)) / 10,
-    `I feel treated fairly regardless of background.`= (9 * `I feel treated fairly regardless of background.` + (performance_24 + 2)) / 10,
-    `Diverse perspectives are valued in my team.`= (9 * `Diverse perspectives are valued in my team.` + (performance_24 + 2)) / 10,
-    `I feel a sense of belonging.`= (9 * `I feel a sense of belonging.` + (performance_24 + 2)) / 10,
-    `The company fosters an inclusive environment.`= (9 * `The company fosters an inclusive environment.` + (performance_24 + 2)) / 10,
-    `The company adapts quickly to change.`= (9 * `The company adapts quickly to change.` + (performance_24 + 2)) / 10,
-    `I am comfortable with the pace of change.`= (9 * `I am comfortable with the pace of change.` + (performance_24 + 2)) / 10,
-    `Innovation is encouraged.`= (9 * `Innovation is encouraged.` + (performance_24 + 2)) / 10,
-    `We can respond to future challenges.`= (9 * `We can respond to future challenges.` + (performance_24 + 2)) / 10,
-    `Communication across departments is effective.`= (9 * `Communication across departments is effective.` + (performance_24 + 2)) / 10,
-    `I know where to find needed information.`= (9 * `I know where to find needed information.` + (performance_24 + 2)) / 10,
-    `Feedback from employees is taken seriously.`= (9 * `Feedback from employees is taken seriously.` + (performance_24 + 2)) / 10,
-    `Internal communications are clear and timely.`= (9 * `Internal communications are clear and timely.` + (performance_24 + 2)) / 10,
-    `I am fairly compensated.`= (9 * `I am fairly compensated.` + (performance_24 + 2)) / 10,
-    `The benefits meet my needs.`= (9 *  `The benefits meet my needs.` + (performance_24 + 2)) / 10,
-    `My pay reflects my performance.`= (9 * `My pay reflects my performance.` + (performance_24 + 2)) / 10,
-    `People here act with integrity.`= (9 *  `People here act with integrity.` + (performance_24 + 2)) / 10,
-    `The company lives its values.`= (9 *  `The company lives its values.` + (performance_24 + 2)) / 10
+    `I am proud to work for this company.`= (8.5 * `I am proud to work for this company.` + 1.5 * (performance_24 + 2)) / 10,
+    `I would recommend this company as a great place to work.`= (8.5 * `I would recommend this company as a great place to work.` + 1.5 * (performance_24 + 2)) / 10,
+    `I feel motivated to do my best every day.`= (7 *  `I feel motivated to do my best every day.` + 3 * (performance_24 + 2)) / 10, #key predictor 
+    `I see myself still working here in two years.`= (8 * `I see myself still working here in two years.` + 2 * (performance_24 + 2)) / 10,
+    `My work gives me a sense of personal accomplishment.`= (7.5 * `My work gives me a sense of personal accomplishment.` + 2.5 * (performance_24 + 2)) / 10,
+    `I trust the decisions made by senior leadership.`= (8.5 * `I trust the decisions made by senior leadership.` + 1.5 * (performance_24 + 2)) / 10,
+    `Leaders communicate a clear vision for the future.`= (8.5 * `Leaders communicate a clear vision for the future.` + 1.5 * (performance_24 + 2)) / 10,
+    `I feel well-informed about what is going on.`= (8.5 * `I feel well-informed about what is going on.` + 1.5 * (performance_24 + 2)) / 10,
+    `Senior leaders are visible and approachable.`= (8.5 * `Senior leaders are visible and approachable.` + 1.5 * (performance_24 + 2)) / 10,
+    `Leadership lives the values of the company.`= (8.5 *  `Leadership lives the values of the company.` + 1.5 * (performance_24 + 2)) / 10,
+    `My manager treats me with respect.`= (8.5 * `My manager treats me with respect.` + 1.5 * (performance_24 + 2)) / 10, 
+    `My manager gives me regular and useful feedback.`= (7  * `My manager gives me regular and useful feedback.` + 3 * (performance_24 + 2)) / 10, #key predictor
+    `My manager supports my professional development.`= (8.5 *`My manager supports my professional development.` + 1.5 * (performance_24 + 2)) / 10,
+    `My manager communicates clearly and effectively.`= (8.5 *`My manager communicates clearly and effectively.` + 1.5 * (performance_24 + 2)) / 10,
+    `My manager motivates me to do my best work.`= (8.5 *`My manager motivates me to do my best work.` + 1.5 * (performance_24 + 2)) / 10,
+    `My team works well together.`= (8.5 *`My team works well together.` + 1.5 *  (performance_24 + 2)) / 10,
+    `I feel supported by my colleagues.`= (8.5 *`I feel supported by my colleagues.` + 1.5 * (performance_24 + 2)) / 10,                    
+    `There is a strong sense of trust within my team.`= (8.5 *`There is a strong sense of trust within my team.` + 1.5 * (performance_24 + 2)) / 10, 
+    `People on my team help each other succeed.`= (8.5 * `People on my team help each other succeed.` + 1.5 * (performance_24 + 2)) / 10, 
+    `I feel like I belong on my team.`= (8.5 *`I feel like I belong on my team.` + 1.5 * (performance_24 + 2)) / 10,
+    `I have the tools and resources I need.`= (7 * `I have the tools and resources I need.` + 3 * (performance_24 + 2)) / 10, #key predictors
+    `I understand what is expected of me.`= (7.5 * `I understand what is expected of me.` + 2.5 * (performance_24 + 2)) / 10, #key predictor
+    `I can make decisions that affect my work.`= (7 * `I can make decisions that affect my work.` + 3 * (performance_24 + 2)) / 10, 
+    `I have the autonomy I need to be effective.`= (7 * `I have the autonomy I need to be effective.` + 3 * (performance_24 + 2)) / 10, #key predictor
+    `I can be myself at work without fear.`= (8.5 *`I can be myself at work without fear.` + 1.5 * (performance_24 + 2)) / 10,
+    `I have access to learning and development opportunities.`= (8.5 *`I have access to learning and development opportunities.` + 1.5 * (performance_24 + 2)) / 10,
+    `I am satisfied with the career opportunities available.`= (7.5 * `I am satisfied with the career opportunities available.` + 2.5 * (performance_24 + 2)) / 10,
+    `My development is a priority for my manager.`= (8.5 *`My development is a priority for my manager.` + 1.5 * (performance_24 + 2)) / 10,
+    `I am encouraged to develop new skills.`= (8.5 * `I am encouraged to develop new skills.` + 1.5 * (performance_24 + 2)) / 10,
+    `I have a clear understanding of how to progress.`= (8.5 *`I have a clear understanding of how to progress.` + 1.5 * (performance_24 + 2)) / 10,
+    `I feel valued for the work I do.`= (7.5 * `I feel valued for the work I do.` + 2.5 * (performance_24 + 2)) / 10,
+    `I receive recognition when I do good work.`= (7.5 * `I receive recognition when I do good work.` + 2.5 * (performance_24 + 2)) / 10,
+    `My contributions are acknowledged by my manager.`= (7 * `My contributions are acknowledged by my manager.` + 3 * (performance_24 + 2)) / 10, 
+    `I maintain a healthy work-life balance.`= (8.5 *`I maintain a healthy work-life balance.` + 1.5 *  (performance_24 + 2)) / 10,
+    `My workload is manageable.`= (7  *  `My workload is manageable.` + 3 * (performance_24 + 2)) / 10,
+    `The company cares about my wellbeing.`= (8.5 *`The company cares about my wellbeing.` + 1.5 * (performance_24 + 2)) / 10,
+    `I feel comfortable taking time off.`= (8.5 *`I feel comfortable taking time off.` + 1.5 * (performance_24 + 2)) / 10,
+    `I can talk openly about stress or mental health.`= (8.5 *`I can talk openly about stress or mental health.` + 1.5 * (performance_24 + 2)) / 10,
+    `I feel treated fairly regardless of background.`= (8.5 *`I feel treated fairly regardless of background.` + 1.5 * (performance_24 + 2)) / 10,
+    `Diverse perspectives are valued in my team.`= (8.5 *`Diverse perspectives are valued in my team.` + 1.5 * (performance_24 + 2)) / 10,
+    `I feel a sense of belonging.`= (8.5 *`I feel a sense of belonging.` + 1.5 * (performance_24 + 2)) / 10,
+    `The company fosters an inclusive environment.`= (8.5 *`The company fosters an inclusive environment.` + 1.5 * (performance_24 + 2)) / 10,
+    `The company adapts quickly to change.`= (8.5 *`The company adapts quickly to change.` + 1.5 * (performance_24 + 2)) / 10,
+    `I am comfortable with the pace of change.`= (7 * `I am comfortable with the pace of change.` + 3 * (performance_24 + 2)) / 10,
+    `Innovation is encouraged.`= (8.5 *`Innovation is encouraged.` + 1.5 * (performance_24 + 2)) / 10,
+    `We can respond to future challenges.`= (8.5 *`We can respond to future challenges.` + 1.5 * (performance_24 + 2)) / 10,
+    `Communication across departments is effective.`= (8.5 *`Communication across departments is effective.` + 1.5 * (performance_24 + 2)) / 10,
+    `I know where to find needed information.`= (7 * `I know where to find needed information.` + 3 * (performance_24 + 2)) / 10,
+    `Feedback from employees is taken seriously.`= (8.5 *`Feedback from employees is taken seriously.` + 1.5 * (performance_24 + 2)) / 10,
+    `Internal communications are clear and timely.`= (8.5 *`Internal communications are clear and timely.` + 1.5 * (performance_24 + 2)) / 10,
+    `I am fairly compensated.`= (8.5 *`I am fairly compensated.` + 1.5 * (performance_24 + 2)) / 10,
+    `The benefits meet my needs.`= (8.5 * `The benefits meet my needs.` + 1.5 * (performance_24 + 2)) / 10,
+    `My pay reflects my performance.`= (7.5 * `My pay reflects my performance.` + 2.5 * (performance_24 + 2)) / 10,
+    `People here act with integrity.`= (8.5 * `People here act with integrity.` + 1.5 *  (performance_24 + 2)) / 10,
+    `The company lives its values.`= (8.5 * `The company lives its values.` + 1.5 * (performance_24 + 2)) / 10
   )
 
 survey <- rbind(survey_np, survey_wp)
@@ -834,118 +843,120 @@ survey_l <- survey %>% filter(employee_status == "Leaver")
 
 survey_l %<>%
   mutate(
-    `I would recommend this company as a great place to work.`= `I would recommend this company as a great place to work.` - 0,
-    `I feel motivated to do my best every day.`=  `I feel motivated to do my best every day.`- 0,
-    `I see myself still working here in two years.`= `I see myself still working here in two years.` - 0.4,
-    `My work gives me a sense of personal accomplishment.`= `My work gives me a sense of personal accomplishment.` - 0,
-    `I trust the decisions made by senior leadership.`= `I trust the decisions made by senior leadership.` - 0.1,
-    `Leaders communicate a clear vision for the future.`= `Leaders communicate a clear vision for the future.` - 0,
-    `I feel well-informed about what is going on.`= `I feel well-informed about what is going on.` - 0,
-    `Senior leaders are visible and approachable.`= `Senior leaders are visible and approachable.` - 0,
-    `Leadership lives the values of the company.`=  `Leadership lives the values of the company.` - 0,
-    `My manager treats me with respect.`= `My manager treats me with respect.` - 0, 
-    `My manager gives me regular and useful feedback.`= `My manager gives me regular and useful feedback.` - 0.1,
-    `My manager supports my professional development.`= `My manager supports my professional development.` - 0,
-    `My manager communicates clearly and effectively.`= `My manager communicates clearly and effectively.` - 0,
-    `My manager motivates me to do my best work.`= `My manager motivates me to do my best work.` - 0,
-    `My team works well together.`= `My team works well together.` - 0.1,
-    `I feel supported by my colleagues.`= `I feel supported by my colleagues.` - 0.1,                    
-    `There is a strong sense of trust within my team.`= `There is a strong sense of trust within my team.` - 0.1, 
-    `People on my team help each other succeed.`=  `People on my team help each other succeed.` - 0.1, 
-    `I feel like I belong on my team.`= `I feel like I belong on my team.` - 0.1,
-    `I have the tools and resources I need.`= `I have the tools and resources I need.`- 0,
-    `I understand what is expected of me.`= `I understand what is expected of me.`- 0.1,
-    `I can make decisions that affect my work.`= `I can make decisions that affect my work.` - 0, 
-    `I have the autonomy I need to be effective.`= `I have the autonomy I need to be effective.`- 0.1,
-    `I can be myself at work without fear.`= `I can be myself at work without fear.` - 0.1,
-    `I have access to learning and development opportunities.`= `I have access to learning and development opportunities.` - 0.1,
-    `I am satisfied with the career opportunities available.`= `I am satisfied with the career opportunities available.` - 0,
-    `My development is a priority for my manager.`= `My development is a priority for my manager.` - 0,
-    `I am encouraged to develop new skills.`=  `I am encouraged to develop new skills.` - 0,
-    `I have a clear understanding of how to progress.`= `I have a clear understanding of how to progress.` - 0,
-    `I feel valued for the work I do.`= `I feel valued for the work I do.` - 0.2,
+    `I am proud to work for this company.` = `I am proud to work for this company.` - 0.2,
+    `I would recommend this company as a great place to work.`= `I would recommend this company as a great place to work.` - 0.2,
+    `I feel motivated to do my best every day.`=  `I feel motivated to do my best every day.`- 0.2,
+    `I see myself still working here in two years.`= `I see myself still working here in two years.` - 0.6,
+    `My work gives me a sense of personal accomplishment.`= `My work gives me a sense of personal accomplishment.` - 0.2,
+    `I trust the decisions made by senior leadership.`= `I trust the decisions made by senior leadership.` - 0.3,
+    `Leaders communicate a clear vision for the future.`= `Leaders communicate a clear vision for the future.` - 0.2,
+    `I feel well-informed about what is going on.`= `I feel well-informed about what is going on.` - 0.2,
+    `Senior leaders are visible and approachable.`= `Senior leaders are visible and approachable.` - 0.2,
+    `Leadership lives the values of the company.`=  `Leadership lives the values of the company.` - 0.2,
+    `My manager treats me with respect.`= `My manager treats me with respect.` - 0.2, 
+    `My manager gives me regular and useful feedback.`= `My manager gives me regular and useful feedback.` - 0.3,
+    `My manager supports my professional development.`= `My manager supports my professional development.` - 0.2,
+    `My manager communicates clearly and effectively.`= `My manager communicates clearly and effectively.` - 0.2,
+    `My manager motivates me to do my best work.`= `My manager motivates me to do my best work.` - 0.2,
+    `My team works well together.`= `My team works well together.` - 0.3,
+    `I feel supported by my colleagues.`= `I feel supported by my colleagues.` - 0.3,                    
+    `There is a strong sense of trust within my team.`= `There is a strong sense of trust within my team.` - 0.3, 
+    `People on my team help each other succeed.`=  `People on my team help each other succeed.` - 0.3, 
+    `I feel like I belong on my team.`= `I feel like I belong on my team.` - 0.3, 
+    `I have the tools and resources I need.`= `I have the tools and resources I need.`- 0.2,
+    `I understand what is expected of me.`= `I understand what is expected of me.`- 0.3,
+    `I can make decisions that affect my work.`= `I can make decisions that affect my work.` - 0.4, 
+    `I have the autonomy I need to be effective.`= `I have the autonomy I need to be effective.`- 0.3,
+    `I can be myself at work without fear.`= `I can be myself at work without fear.` - 0.3,
+    `I have access to learning and development opportunities.`= `I have access to learning and development opportunities.` - 0.3,
+    `I am satisfied with the career opportunities available.`= `I am satisfied with the career opportunities available.` - 0.2,
+    `My development is a priority for my manager.`= `My development is a priority for my manager.` - 0.2,
+    `I am encouraged to develop new skills.`=  `I am encouraged to develop new skills.` - 0.2,
+    `I have a clear understanding of how to progress.`= `I have a clear understanding of how to progress.` - 0.2,
+    `I feel valued for the work I do.`= `I feel valued for the work I do.` - 0.4,
     `I receive recognition when I do good work.`= `I receive recognition when I do good work.` - 0,
-    `My contributions are acknowledged by my manager.`= `My contributions are acknowledged by my manager.`- 0,
-    `I maintain a healthy work-life balance.`= `I maintain a healthy work-life balance.` - 0.2,
-    `My workload is manageable.`=  `My workload is manageable.` - 0.2,
-    `The company cares about my wellbeing.`= `The company cares about my wellbeing.` - 0.2,
-    `I feel comfortable taking time off.`= `I feel comfortable taking time off.` - 0.1,
-    `I can talk openly about stress or mental health.`= `I can talk openly about stress or mental health.` - 0.1,
-    `I feel treated fairly regardless of background.`= `I feel treated fairly regardless of background.` - 0,
-    `Diverse perspectives are valued in my team.`= `Diverse perspectives are valued in my team.` - 0.1,
-    `I feel a sense of belonging.`= `I feel a sense of belonging.` - 0.2,
-    `The company fosters an inclusive environment.`= `The company fosters an inclusive environment.` - 0,
-    `The company adapts quickly to change.`= `The company adapts quickly to change.` - 0,
-    `I am comfortable with the pace of change.`= `I am comfortable with the pace of change.` - 0.2,
-    `Innovation is encouraged.`= `Innovation is encouraged.` - 0,
-    `We can respond to future challenges.`= `We can respond to future challenges.` - 0,
-    `Communication across departments is effective.`= `Communication across departments is effective.` - 0,
-    `I know where to find needed information.`= `I know where to find needed information.` - 0,
-    `Feedback from employees is taken seriously.`= `Feedback from employees is taken seriously.` - 0.2,
-    `Internal communications are clear and timely.`= `Internal communications are clear and timely.` - 0,
-    `I am fairly compensated.`= `I am fairly compensated.` - 0,
-    `The benefits meet my needs.`=  `The benefits meet my needs.` - 0,
-    `My pay reflects my performance.`= `My pay reflects my performance.` - 0,
-    `People here act with integrity.`=  `People here act with integrity.` - 0,
-    `The company lives its values.`=  `The company lives its values.` - 0
+    `My contributions are acknowledged by my manager.`= `My contributions are acknowledged by my manager.`- 0.2,
+    `I maintain a healthy work-life balance.`= `I maintain a healthy work-life balance.` - 0.4,
+    `My workload is manageable.`=  `My workload is manageable.` - 0.4,
+    `The company cares about my wellbeing.`= `The company cares about my wellbeing.` - 0.4,
+    `I feel comfortable taking time off.`= `I feel comfortable taking time off.` - 0.3,
+    `I can talk openly about stress or mental health.`= `I can talk openly about stress or mental health.` - 0.3,
+    `I feel treated fairly regardless of background.`= `I feel treated fairly regardless of background.` - 0.2,
+    `Diverse perspectives are valued in my team.`= `Diverse perspectives are valued in my team.` - 0.3,
+    `I feel a sense of belonging.`= `I feel a sense of belonging.` - 0.4,
+    `The company fosters an inclusive environment.`= `The company fosters an inclusive environment.` - 0.2,
+    `The company adapts quickly to change.`= `The company adapts quickly to change.` - 0.2,
+    `I am comfortable with the pace of change.`= `I am comfortable with the pace of change.` - 0.4,
+    `Innovation is encouraged.`= `Innovation is encouraged.` - 0.2,
+    `We can respond to future challenges.`= `We can respond to future challenges.` - 0.2,
+    `Communication across departments is effective.`= `Communication across departments is effective.` - 0.2,
+    `I know where to find needed information.`= `I know where to find needed information.` - 0.2,
+    `Feedback from employees is taken seriously.`= `Feedback from employees is taken seriously.` - 0.4,
+    `Internal communications are clear and timely.`= `Internal communications are clear and timely.` - 0.2,
+    `I am fairly compensated.`= `I am fairly compensated.` - 0.2,
+    `The benefits meet my needs.`=  `The benefits meet my needs.` - 0.2,
+    `My pay reflects my performance.`= `My pay reflects my performance.` - 0.2,
+    `People here act with integrity.`=  `People here act with integrity.` - 0.2,
+    `The company lives its values.`=  `The company lives its values.` - 0.2
   )
 
 survey_c %<>%
   mutate(
-    `I would recommend this company as a great place to work.`= `I would recommend this company as a great place to work.` + 0.2,
-    `I feel motivated to do my best every day.`=  `I feel motivated to do my best every day.`+ 0.2,
-    `I see myself still working here in two years.`= `I see myself still working here in two years.` + 0.6,
-    `My work gives me a sense of personal accomplishment.`= `My work gives me a sense of personal accomplishment.` + 0.2,
-    `I trust the decisions made by senior leadership.`= `I trust the decisions made by senior leadership.` + 0.3,
-    `Leaders communicate a clear vision for the future.`= `Leaders communicate a clear vision for the future.` + 0.2,
-    `I feel well-informed about what is going on.`= `I feel well-informed about what is going on.` + 0.2,
-    `Senior leaders are visible and approachable.`= `Senior leaders are visible and approachable.` + 0.2,
-    `Leadership lives the values of the company.`=  `Leadership lives the values of the company.` + 0.2,
-    `My manager treats me with respect.`= `My manager treats me with respect.` + 0.2, 
-    `My manager gives me regular and useful feedback.`= `My manager gives me regular and useful feedback.` + 0.3,
-    `My manager supports my professional development.`= `My manager supports my professional development.` + 0.2,
-    `My manager communicates clearly and effectively.`= `My manager communicates clearly and effectively.` + 0.2,
-    `My manager motivates me to do my best work.`= `My manager motivates me to do my best work.` + 0.2,
-    `My team works well together.`= `My team works well together.` + 0.3,
-    `I feel supported by my colleagues.`= `I feel supported by my colleagues.` + 0.3,                    
-    `There is a strong sense of trust within my team.`= `There is a strong sense of trust within my team.` + 0.3, 
-    `People on my team help each other succeed.`=  `People on my team help each other succeed.` + 0.3, 
-    `I feel like I belong on my team.`= `I feel like I belong on my team.` + 0.3,
-    `I have the tools and resources I need.`= `I have the tools and resources I need.`+ 0.2,
+    `I am proud to work for this company.` = `I am proud to work for this company.` + 0,
+    `I would recommend this company as a great place to work.`= `I would recommend this company as a great place to work.` + 0,
+    `I feel motivated to do my best every day.`=  `I feel motivated to do my best every day.`+ 0,
+    `I see myself still working here in two years.`= `I see myself still working here in two years.` + 0.4,
+    `My work gives me a sense of personal accomplishment.`= `My work gives me a sense of personal accomplishment.` + 0.3,
+    `I trust the decisions made by senior leadership.`= `I trust the decisions made by senior leadership.` + 0.1,
+    `Leaders communicate a clear vision for the future.`= `Leaders communicate a clear vision for the future.` + 0,
+    `I feel well-informed about what is going on.`= `I feel well-informed about what is going on.` + 0,
+    `Senior leaders are visible and approachable.`= `Senior leaders are visible and approachable.` + 0,
+    `Leadership lives the values of the company.`=  `Leadership lives the values of the company.` + 0,
+    `My manager treats me with respect.`= `My manager treats me with respect.` + 0.6, 
+    `My manager gives me regular and useful feedback.`= `My manager gives me regular and useful feedback.` + 0.2,
+    `My manager supports my professional development.`= `My manager supports my professional development.` + 0,
+    `My manager communicates clearly and effectively.`= `My manager communicates clearly and effectively.` + 0,
+    `My manager motivates me to do my best work.`= `My manager motivates me to do my best work.` + 0,
+    `My team works well together.`= `My team works well together.` + 0.4,
+    `I feel supported by my colleagues.`= `I feel supported by my colleagues.` + 0.1,                    
+    `There is a strong sense of trust within my team.`= `There is a strong sense of trust within my team.` + 0.1, 
+    `People on my team help each other succeed.`=  `People on my team help each other succeed.` + 0.1, 
+    `I feel like I belong on my team.`= `I feel like I belong on my team.` + 0.4,
+    `I have the tools and resources I need.`= `I have the tools and resources I need.`+ 0,
     `I understand what is expected of me.`= `I understand what is expected of me.`+ 0.3,
-    `I can make decisions that affect my work.`= `I can make decisions that affect my work.` + 0.2, 
-    `I have the autonomy I need to be effective.`= `I have the autonomy I need to be effective.`+ 0.3,
-    `I can be myself at work without fear.`= `I can be myself at work without fear.` + 0.3,
-    `I have access to learning and development opportunities.`= `I have access to learning and development opportunities.` + 0.3,
-    `I am satisfied with the career opportunities available.`= `I am satisfied with the career opportunities available.` + 0.2,
-    `My development is a priority for my manager.`= `My development is a priority for my manager.` + 0.2,
-    `I am encouraged to develop new skills.`=  `I am encouraged to develop new skills.` + 0.2,
-    `I have a clear understanding of how to progress.`= `I have a clear understanding of how to progress.` + 0.2,
-    `I feel valued for the work I do.`= `I feel valued for the work I do.` + 0.4,
+    `I can make decisions that affect my work.`= `I can make decisions that affect my work.` + 0, 
+    `I have the autonomy I need to be effective.`= `I have the autonomy I need to be effective.`+ 0.1,
+    `I can be myself at work without fear.`= `I can be myself at work without fear.` + 0.1,
+    `I have access to learning and development opportunities.`= `I have access to learning and development opportunities.` + 0.1,
+    `I am satisfied with the career opportunities available.`= `I am satisfied with the career opportunities available.` + 0 ,
+    `My development is a priority for my manager.`= `My development is a priority for my manager.` + 0 ,
+    `I am encouraged to develop new skills.`=  `I am encouraged to develop new skills.` + 0 ,
+    `I have a clear understanding of how to progress.`= `I have a clear understanding of how to progress.` + 0 ,
+    `I feel valued for the work I do.`= `I feel valued for the work I do.` + 0.2,
     `I receive recognition when I do good work.`= `I receive recognition when I do good work.` + 0.2,
     `My contributions are acknowledged by my manager.`= `My contributions are acknowledged by my manager.`+ 0.2,
-    `I maintain a healthy work-life balance.`= `I maintain a healthy work-life balance.` + 0.4,
-    `My workload is manageable.`=  `My workload is manageable.` + 0.4,
-    `The company cares about my wellbeing.`= `The company cares about my wellbeing.` + 0.4,
-    `I feel comfortable taking time off.`= `I feel comfortable taking time off.` + 0.3,
-    `I can talk openly about stress or mental health.`= `I can talk openly about stress or mental health.` + 0.3,
-    `I feel treated fairly regardless of background.`= `I feel treated fairly regardless of background.` + 0.2,
-    `Diverse perspectives are valued in my team.`= `Diverse perspectives are valued in my team.` + 0.3,
-    `I feel a sense of belonging.`= `I feel a sense of belonging.` + 0.4,
-    `The company fosters an inclusive environment.`= `The company fosters an inclusive environment.` + 0.2,
-    `The company adapts quickly to change.`= `The company adapts quickly to change.` + 0.2,
-    `I am comfortable with the pace of change.`= `I am comfortable with the pace of change.` + 0.4,
-    `Innovation is encouraged.`= `Innovation is encouraged.` + 0.2,
-    `We can respond to future challenges.`= `We can respond to future challenges.` + 0.2,
-    `Communication across departments is effective.`= `Communication across departments is effective.` + 0.2,
-    `I know where to find needed information.`= `I know where to find needed information.` + 0.2,
-    `Feedback from employees is taken seriously.`= `Feedback from employees is taken seriously.` + 0.4,
-    `Internal communications are clear and timely.`= `Internal communications are clear and timely.` + 0.2,
-    `I am fairly compensated.`= `I am fairly compensated.` + 0.2,
-    `The benefits meet my needs.`=  `The benefits meet my needs.` + 0.2,
-    `My pay reflects my performance.`= `My pay reflects my performance.` + 0.2,
-    `People here act with integrity.`=  `People here act with integrity.` + 0.2,
-    `The company lives its values.`=  `The company lives its values.` + 0.2
+    `I maintain a healthy work-life balance.`= `I maintain a healthy work-life balance.` + 0.2,
+    `My workload is manageable.`=  `My workload is manageable.` + 0.2,
+    `The company cares about my wellbeing.`= `The company cares about my wellbeing.` + 0.2,
+    `I feel comfortable taking time off.`= `I feel comfortable taking time off.` + 0.1,
+    `I can talk openly about stress or mental health.`= `I can talk openly about stress or mental health.` + 0.1,
+    `I feel treated fairly regardless of background.`= `I feel treated fairly regardless of background.` + 0 ,
+    `Diverse perspectives are valued in my team.`= `Diverse perspectives are valued in my team.` + 0.1,
+    `I feel a sense of belonging.`= `I feel a sense of belonging.` + 0.2,
+    `The company fosters an inclusive environment.`= `The company fosters an inclusive environment.` + 0 ,
+    `The company adapts quickly to change.`= `The company adapts quickly to change.` + 0 ,
+    `I am comfortable with the pace of change.`= `I am comfortable with the pace of change.` + 0.2,
+    `Innovation is encouraged.`= `Innovation is encouraged.` + 0 ,
+    `We can respond to future challenges.`= `We can respond to future challenges.` + 0 ,
+    `Communication across departments is effective.`= `Communication across departments is effective.` + 0 ,
+    `I know where to find needed information.`= `I know where to find needed information.` + 0 ,
+    `Feedback from employees is taken seriously.`= `Feedback from employees is taken seriously.` + 0 ,
+    `Internal communications are clear and timely.`= `Internal communications are clear and timely.` + 0 ,
+    `I am fairly compensated.`= `I am fairly compensated.` + 0,
+    `The benefits meet my needs.`=  `The benefits meet my needs.` + 0,
+    `My pay reflects my performance.`= `My pay reflects my performance.` + 0,
+    `People here act with integrity.`=  `People here act with integrity.` + 0.3,
+    `The company lives its values.`=  `The company lives its values.` + 0
   )
 
 survey <- rbind(survey_c, survey_l) 
@@ -1020,73 +1031,126 @@ survey %>%
 #round values at the end and make sure no plus 7 or minus & drop variables
 survey %<>%
   mutate(
-    `I would recommend this company as a great place to work.`= `I would recommend this company as a great place to work.`  %>% pmin(7) %>% round(),
-    `I feel motivated to do my best every day.`=  `I feel motivated to do my best every day.`%>% pmin(7) %>% round(),
-    `I see myself still working here in two years.`= `I see myself still working here in two years.` %>% pmin(7) %>% round(),
-    `My work gives me a sense of personal accomplishment.`= `My work gives me a sense of personal accomplishment.` %>% pmin(7) %>% round(),
-    `I trust the decisions made by senior leadership.`= `I trust the decisions made by senior leadership.` %>% pmin(7) %>% round(),
-    `Leaders communicate a clear vision for the future.`= `Leaders communicate a clear vision for the future.` %>% pmin(7) %>% round(),
-    `I feel well-informed about what is going on.`= `I feel well-informed about what is going on.` %>% pmin(7) %>% round(),
-    `Senior leaders are visible and approachable.`= `Senior leaders are visible and approachable.` %>% pmin(7) %>% round(),
-    `Leadership lives the values of the company.`=  `Leadership lives the values of the company.` %>% pmin(7) %>% round(),
-    `My manager treats me with respect.`= `My manager treats me with respect.` %>% pmin(7) %>% round(), 
-    `My manager gives me regular and useful feedback.`= `My manager gives me regular and useful feedback.` %>% pmin(7) %>% round(),
-    `My manager supports my professional development.`= `My manager supports my professional development.` %>% pmin(7) %>% round(),
-    `My manager communicates clearly and effectively.`= `My manager communicates clearly and effectively.` %>% pmin(7) %>% round(),
-    `My manager motivates me to do my best work.`= `My manager motivates me to do my best work.` %>% pmin(7) %>% round(),
-    `My team works well together.`= `My team works well together.` %>% pmin(7) %>% round(),
-    `I feel supported by my colleagues.`= `I feel supported by my colleagues.` %>% pmin(7) %>% round(),                    
-    `There is a strong sense of trust within my team.`= `There is a strong sense of trust within my team.` %>% pmin(7) %>% round(), 
-    `People on my team help each other succeed.`=  `People on my team help each other succeed.` %>% pmin(7) %>% round(), 
-    `I feel like I belong on my team.`= `I feel like I belong on my team.` %>% pmin(7) %>% round(),
-    `I have the tools and resources I need.`= `I have the tools and resources I need.`%>% pmin(7) %>% round(),
-    `I understand what is expected of me.`= `I understand what is expected of me.`%>% pmin(7) %>% round(),
-    `I can make decisions that affect my work.`= `I can make decisions that affect my work.` %>% pmin(7) %>% round(), 
-    `I have the autonomy I need to be effective.`= `I have the autonomy I need to be effective.`%>% pmin(7) %>% round(),
-    `I can be myself at work without fear.`= `I can be myself at work without fear.` %>% pmin(7) %>% round(),
-    `I have access to learning and development opportunities.`= `I have access to learning and development opportunities.` %>% pmin(7) %>% round(),
-    `I am satisfied with the career opportunities available.`= `I am satisfied with the career opportunities available.` %>% pmin(7) %>% round(),
-    `My development is a priority for my manager.`= `My development is a priority for my manager.` %>% pmin(7) %>% round(),
-    `I am encouraged to develop new skills.`=  `I am encouraged to develop new skills.` %>% pmin(7) %>% round(),
-    `I have a clear understanding of how to progress.`= `I have a clear understanding of how to progress.` %>% pmin(7) %>% round(),
-    `I feel valued for the work I do.`= `I feel valued for the work I do.` %>% pmin(7) %>% round(),
-    `I receive recognition when I do good work.`= `I receive recognition when I do good work.` %>% pmin(7) %>% round(),
-    `My contributions are acknowledged by my manager.`= `My contributions are acknowledged by my manager.`%>% pmin(7) %>% round(),
-    `I maintain a healthy work-life balance.`= `I maintain a healthy work-life balance.` %>% pmin(7) %>% round(),
-    `My workload is manageable.`=  `My workload is manageable.` %>% pmin(7) %>% round(),
-    `The company cares about my wellbeing.`= `The company cares about my wellbeing.` %>% pmin(7) %>% round(),
-    `I feel comfortable taking time off.`= `I feel comfortable taking time off.` %>% pmin(7) %>% round(),
-    `I can talk openly about stress or mental health.`= `I can talk openly about stress or mental health.` %>% pmin(7) %>% round(),
-    `I feel treated fairly regardless of background.`= `I feel treated fairly regardless of background.` %>% pmin(7) %>% round(),
-    `Diverse perspectives are valued in my team.`= `Diverse perspectives are valued in my team.` %>% pmin(7) %>% round(),
-    `I feel a sense of belonging.`= `I feel a sense of belonging.` %>% pmin(7) %>% round(),
-    `The company fosters an inclusive environment.`= `The company fosters an inclusive environment.` %>% pmin(7) %>% round(),
-    `The company adapts quickly to change.`= `The company adapts quickly to change.` %>% pmin(7) %>% round(),
-    `I am comfortable with the pace of change.`= `I am comfortable with the pace of change.` %>% pmin(7) %>% round(),
-    `Innovation is encouraged.`= `Innovation is encouraged.` %>% pmin(7) %>% round(),
-    `We can respond to future challenges.`= `We can respond to future challenges.` %>% pmin(7) %>% round(),
-    `Communication across departments is effective.`= `Communication across departments is effective.` %>% pmin(7) %>% round(),
-    `I know where to find needed information.`= `I know where to find needed information.` %>% pmin(7) %>% round(),
-    `Feedback from employees is taken seriously.`= `Feedback from employees is taken seriously.` %>% pmin(7) %>% round(),
-    `Internal communications are clear and timely.`= `Internal communications are clear and timely.` %>% pmin(7) %>% round(),
-    `I am fairly compensated.`= `I am fairly compensated.` %>% pmin(7) %>% round(),
-    `The benefits meet my needs.`=  `The benefits meet my needs.` %>% pmin(7) %>% round(),
-    `My pay reflects my performance.`= `My pay reflects my performance.` %>% pmin(7) %>% round(),
-    `People here act with integrity.`=  `People here act with integrity.` %>% pmin(7) %>% round(),
-    `The company lives its values.`=  `The company lives its values.` %>% pmin(7) %>% round()
+    `I am proud to work for this company.` = `I am proud to work for this company.`  %>% pmin(7) %>% pmax(1) %>% round(),
+    `I would recommend this company as a great place to work.`= `I would recommend this company as a great place to work.`  %>% pmin(7) %>% pmax(1) %>% round(),
+    `I feel motivated to do my best every day.`=  `I feel motivated to do my best every day.`%>% pmin(7) %>% pmax(1) %>% round(),
+    `I see myself still working here in two years.`= `I see myself still working here in two years.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `My work gives me a sense of personal accomplishment.`= `My work gives me a sense of personal accomplishment.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I trust the decisions made by senior leadership.`= `I trust the decisions made by senior leadership.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `Leaders communicate a clear vision for the future.`= `Leaders communicate a clear vision for the future.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I feel well-informed about what is going on.`= `I feel well-informed about what is going on.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `Senior leaders are visible and approachable.`= `Senior leaders are visible and approachable.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `Leadership lives the values of the company.`=  `Leadership lives the values of the company.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `My manager treats me with respect.`= `My manager treats me with respect.` %>% pmin(7) %>% pmax(1) %>% round(), 
+    `My manager gives me regular and useful feedback.`= `My manager gives me regular and useful feedback.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `My manager supports my professional development.`= `My manager supports my professional development.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `My manager communicates clearly and effectively.`= `My manager communicates clearly and effectively.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `My manager motivates me to do my best work.`= `My manager motivates me to do my best work.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `My team works well together.`= `My team works well together.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I feel supported by my colleagues.`= `I feel supported by my colleagues.` %>% pmin(7) %>% pmax(1) %>% round(),                    
+    `There is a strong sense of trust within my team.`= `There is a strong sense of trust within my team.` %>% pmin(7) %>% pmax(1) %>% round(), 
+    `People on my team help each other succeed.`=  `People on my team help each other succeed.` %>% pmin(7) %>% pmax(1) %>% round(), 
+    `I feel like I belong on my team.`= `I feel like I belong on my team.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I have the tools and resources I need.`= `I have the tools and resources I need.`%>% pmin(7) %>% pmax(1) %>% round(),
+    `I understand what is expected of me.`= `I understand what is expected of me.`%>% pmin(7) %>% pmax(1) %>% round(),
+    `I can make decisions that affect my work.`= `I can make decisions that affect my work.` %>% pmin(7) %>% pmax(1) %>% round(), 
+    `I have the autonomy I need to be effective.`= `I have the autonomy I need to be effective.`%>% pmin(7) %>% pmax(1) %>% round(),
+    `I can be myself at work without fear.`= `I can be myself at work without fear.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I have access to learning and development opportunities.`= `I have access to learning and development opportunities.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I am satisfied with the career opportunities available.`= `I am satisfied with the career opportunities available.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `My development is a priority for my manager.`= `My development is a priority for my manager.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I am encouraged to develop new skills.`=  `I am encouraged to develop new skills.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I have a clear understanding of how to progress.`= `I have a clear understanding of how to progress.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I feel valued for the work I do.`= `I feel valued for the work I do.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I receive recognition when I do good work.`= `I receive recognition when I do good work.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `My contributions are acknowledged by my manager.`= `My contributions are acknowledged by my manager.`%>% pmin(7) %>% pmax(1) %>% round(),
+    `I maintain a healthy work-life balance.`= `I maintain a healthy work-life balance.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `My workload is manageable.`=  `My workload is manageable.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `The company cares about my wellbeing.`= `The company cares about my wellbeing.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I feel comfortable taking time off.`= `I feel comfortable taking time off.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I can talk openly about stress or mental health.`= `I can talk openly about stress or mental health.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I feel treated fairly regardless of background.`= `I feel treated fairly regardless of background.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `Diverse perspectives are valued in my team.`= `Diverse perspectives are valued in my team.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I feel a sense of belonging.`= `I feel a sense of belonging.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `The company fosters an inclusive environment.`= `The company fosters an inclusive environment.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `The company adapts quickly to change.`= `The company adapts quickly to change.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I am comfortable with the pace of change.`= `I am comfortable with the pace of change.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `Innovation is encouraged.`= `Innovation is encouraged.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `We can respond to future challenges.`= `We can respond to future challenges.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `Communication across departments is effective.`= `Communication across departments is effective.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I know where to find needed information.`= `I know where to find needed information.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `Feedback from employees is taken seriously.`= `Feedback from employees is taken seriously.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `Internal communications are clear and timely.`= `Internal communications are clear and timely.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `I am fairly compensated.`= `I am fairly compensated.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `The benefits meet my needs.`=  `The benefits meet my needs.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `My pay reflects my performance.`= `My pay reflects my performance.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `People here act with integrity.`=  `People here act with integrity.` %>% pmin(7) %>% pmax(1) %>% round(),
+    `The company lives its values.`=  `The company lives its values.` %>% pmin(7) %>% pmax(1) %>% round()
   )
 
 survey %<>% 
-  select(-employee_id) %>%
+  select(-employee_id, `I am proud to work for this company.`) %>%
   rowwise() %>% 
   mutate(
     survey_id = paste0(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), collapse = "")
   ) %>%
   ungroup()
 
+employeesurvey_data <- survey
 
 #write to file
-write.csv(survey, "hr_data/employeesurvey_data.csv", row.names = FALSE, fileEncoding = "UTF-8")
+write.csv(employeesurvey_data, "hr_data/employeesurvey_data.csv", row.names = FALSE, fileEncoding = "UTF-8")
+
+
+#generate open text responses ----
+n_responses <- (0.5 * nrow(employeesurvey_data)) %>% round()
+api_key <- readLines("api_key.txt")
+
+
+#defining a function to send a prompt to openAI api
+generate_response <- function(prompt, model = "gpt-3.5-turbo", temperature = 0.7) {
+  response <- POST(
+    url = "https://api.openai.com/v1/chat/completions",
+    add_headers(Authorization = paste("Bearer", api_key)),
+    content_type_json(),
+    encode = "json",
+    body = list(
+      model = model,
+      messages = list(
+        list(role = "system", content = "You are a helpful assistant generating realistic employee survey responses."),
+        list(role = "user", content = prompt)
+      ),
+      temperature = temperature
+    )
+  )
+  
+  content <- content(response, as = "parsed", type = "application/json")
+  
+  # Extract response text
+  content$choices[[1]]$message$content
+}
+
+# Example: generate based on a vector of fake Likert scores or themes
+prompts <- rep("Please write a short employee comment about workload and time pressure.", 5000)
+
+results <- character(length(prompts))
+
+for (i in seq_along(prompts)) {
+  cat("Generating response", i, "of", length(prompts), "\n")
+  try({
+    results[i] <- generate_response(prompts[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output <- tibble::tibble(prompt = prompts, response = results)
+write.csv(output, "synthetic_feedback.csv", row.names = FALSE)
+
+# Make prompts more dynamic
+prompts <- paste0("Write a realistic employee comment about ", 
+                  sample(c("career development", "teamwork", "manager support", 
+                           "wellbeing", "recognition"), 5000, replace = TRUE), 
+                  ". The employee feels neutral to slightly positive.")
 
 
 #do list ----
@@ -1096,13 +1160,9 @@ write.csv(survey, "hr_data/employeesurvey_data.csv", row.names = FALSE, fileEnco
 
 
 
-
-
-
-
 #maybe later
 #look at hiring data again to make sure the data reflects internal hiring (if not too complicated)
-
+#unterschiedlicher impact von anderen variablen auf performance in sales, da performance anders bewertet wird dort.
 #find a way to model contingency of starters following leavers for senior leaders
 #qualitative comments?
 #skewed normal distributions for e.g. tenure
@@ -1111,6 +1171,10 @@ write.csv(survey, "hr_data/employeesurvey_data.csv", row.names = FALSE, fileEnco
 #if leaver, last event -> left
 #reduce range for both datasets
 #(and maybe pulse survey?-probs too much)
+#scores lower than 4
+#Korrelationen zwischen thematisch ähnlichen Items
+#increase differences between ratings sources in feedback data? or not to make it not more complicated
+#correct effect sizes for manager ratings, sds are too small
 
 #done
 #correlation with tenure by relevant domain.
