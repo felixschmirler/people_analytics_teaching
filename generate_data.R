@@ -1103,12 +1103,12 @@ write.csv(employeesurvey_data, "hr_data/employeesurvey_data.csv", row.names = FA
 
 
 #generate open text responses ----
-n_responses <- (0.5 * nrow(employeesurvey_data)) %>% round()
+employeesurvey_data %>% count(department) %>% mutate(n_comments = n/2, n_prompts = n_comments/5)
 api_key <- readLines("api_key.txt")
 
 
-#defining a function to send a prompt to openAI api
-generate_response <- function(prompt, model = "gpt-3.5-turbo", temperature = 0.7) {
+#defining a function to send a prompt to openAI api model options tested: gpt-3.5 turbo
+generate_response <- function(prompt, model = "gpt-3.5-turbo", temperature = 0.8) {
   response <- POST(
     url = "https://api.openai.com/v1/chat/completions",
     add_headers(Authorization = paste("Bearer", api_key)),
@@ -1117,7 +1117,32 @@ generate_response <- function(prompt, model = "gpt-3.5-turbo", temperature = 0.7
     body = list(
       model = model,
       messages = list(
-        list(role = "system", content = "You are a helpful assistant generating realistic employee survey responses."),
+        list(role = "system", content = "You are a helpful assistant generating 
+             realistic employee survey responses for a company that manufactures 
+             specialised technology with 10000 people that has their headquarter 
+             in germany, large production sites in Germany and Czechia and sales, 
+             marketing and customer service in other european countries. Please 
+             sample from the following themes when I ask you to write employee 
+             survey comments. 1. A very siloed company structure and unwillingness 
+             to collaborate between departments 2. Strong believe in the need to 
+             change as a company and innovate supported strongly by all managers 
+             and leaders in the company 3. Managers push to make sure that 
+             everything is delivered at a high standard and on time, 4. Managers 
+             are very diligent and don't leave people much room to experiment but 
+             rather micromanage, 5. Managers care on a human level 
+             about their team and colleagues and try to support them where they 
+             can, even at their own expense, 6. Managers are terrible role models 
+             with regards to setting boundaries at work and looking after their 
+             own wellbeing, 7. High work load and poor wellbeing due to 
+             unrealistic targets and workload, 8. strong team cohesion and a sense 
+             of belonging, 9. very low autonomy and nobody is listenting really 
+             to new ideas or feedback from employees, 10. people feel well payed 
+             and recognised for their effort and have a sense of accomplishment, 
+             11. mental health is not really a topic people know how to talk about 
+             or feel safe bringing it up, 12. people feel like they don't have 
+             the skills or training to deal with all the change that is expected, 
+             13. people don't feel ready for change from their mindset yet, 14. 
+             people are loosing trust in senior leadership and their strategy"),
         list(role = "user", content = prompt)
       ),
       temperature = temperature
@@ -1130,8 +1155,324 @@ generate_response <- function(prompt, model = "gpt-3.5-turbo", temperature = 0.7
   content$choices[[1]]$message$content
 }
 
-# Example: generate based on a vector of fake Likert scores or themes
+
+#sales comments
+prompts_sales <- rep("Write five short employee comments typical for an employee 
+                     survey and sample from the 14 themes in your background 
+                     context. Vary the length, sentiment and formality for each 
+                     comment and bring in the context of a sales department in 
+                     half of the comments. For example how the harsh performance 
+                     metrics related to sales numbers lead to people never trying 
+                     new things. Don't include any metadata or 
+                     anything else but the comment", 167)
+
+results_sales <- character(length(prompts_sales))
+
+for (i in seq_along(prompts_sales)) {
+  cat("Generating response", i, "of", length(prompts_sales), "\n")
+  try({
+    results_sales[i] <- generate_response(prompts_sales[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output_sales <- tibble(prompt = prompts_sales, response = results_sales)
+write.csv(output_sales, "hr_data/sales_comments.csv")
+
+#customer service comments
+prompts_cs <- rep("Write five short employee comments typical for an employee 
+                  survey and sample from the 14 themes in your background 
+                  context. Vary the length, sentiment and formality for each 
+                  comment and bring in the context of a typical customer service 
+                  department in half of the comments. Don't include any metadata 
+                  or anything else but the comment", 105)
+
+results_cs <- character(length(prompts_cs))
+
+for (i in seq_along(prompts_cs)) {
+  cat("Generating response", i, "of", length(prompts_cs), "\n")
+  try({
+    results_cs[i] <- generate_response(prompts_cs[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output_cs <- tibble(prompt = prompts_cs, response = results_cs)
+write.csv(output_cs, "hr_data/cs_comments.csv")
+
+#finance comments
+prompts_finance <- rep("Write five short employee comments typical for an 
+                       employee survey and sample from the 14 themes in your 
+                       background context. Vary the length, sentiment and 
+                       formality for each comment and bring in the context of a 
+                       typical finance department in half of the comments. Don't 
+                       include any metadata or anything else but the comment", 44)
+
+results_finance <- character(length(prompts_finance))
+
+for (i in seq_along(prompts_finance)) {
+  cat("Generating response", i, "of", length(prompts_finance), "\n")
+  try({
+    results_finance[i] <- generate_response(prompts_finance[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output_finance <- tibble(prompt = prompts_finance, response = results_finance)
+write.csv(output_finance, "hr_data/finance_comments.csv")
+
+
+#marketing comments
+prompts_marketing <- rep("Write five short employee comments typical for an 
+                         employee survey and sample from the 14 themes in your 
+                         background context. Vary the length, sentiment and 
+                         formality for each comment and bring in the context of 
+                         a typical marketing department in half of the comments. 
+                         Don't include any metadata or anything else but the 
+                         comment", 43)
+
+results_marketing <- character(length(prompts_marketing))
+
+for (i in seq_along(prompts_marketing)) {
+  cat("Generating response", i, "of", length(prompts_marketing), "\n")
+  try({
+    results_marketing[i] <- generate_response(prompts_marketing[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output_marketing <- tibble(prompt = prompts_marketing, response = results_marketing)
+write.csv(output_marketing, "hr_data/marketing_comments.csv")
+
+
+#hr comments
+prompts_hr <- rep("Write five short employee comments typical for an employee 
+                  survey and sample from the 14 themes in your background context. 
+                  Vary the length, sentiment and formality for each comment and 
+                  bring in the context of a typical human resource department in 
+                  half of the comments. Don't include any metadata or anything 
+                  else but the comment", 23)
+
+results_hr <- character(length(prompts_hr))
+
+for (i in seq_along(prompts_hr)) {
+  cat("Generating response", i, "of", length(prompts_hr), "\n")
+  try({
+    results_hr[i] <- generate_response(prompts_hr[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output_hr <- tibble(prompt = prompts_hr, response = results_hr)
+write.csv(output_hr, "hr_data/hr_comments.csv")
+
+#production comments
+prompts_production <- rep("Write five short employee comments typical for an employee 
+                  survey and sample from the 14 themes in your background context. 
+                  Vary the length, sentiment and formality for each comment and 
+                  bring in the context of a typical production site/blue collar staff in 
+                  half of the comments. Don't include any metadata or anything 
+                  else but the comment", 168)
+
+results_production <- character(length(prompts_production))
+
+for (i in seq_along(prompts_production)) {
+  cat("Generating response", i, "of", length(prompts_production), "\n")
+  try({
+    results_production[i] <- generate_response(prompts_production[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output_production <- tibble(prompt = prompts_production, response = results_production)
+write.csv(output_production, "hr_data/production_comments.csv")
+
+#rd comments
+prompts_rd <- rep("Write five short employee comments typical for an employee 
+                  survey and sample from the 14 themes in your background context. 
+                  Vary the length, sentiment and formality for each comment and 
+                  bring in the context of a typical Research and development department in 
+                  half of the comments. Don't include any metadata or anything 
+                  else but the comment", 85)
+
+results_rd <- character(length(prompts_rd))
+
+for (i in seq_along(prompts_rd)) {
+  cat("Generating response", i, "of", length(prompts_rd), "\n")
+  try({
+    results_rd[i] <- generate_response(prompts_rd[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output_rd <- tibble(prompt = prompts_rd, response = results_rd)
+write.csv(output_rd, "hr_data/rd_comments.csv")
+
+#combine comments
+all_comments <- rbind(
+  output_cs %>% mutate(prompt = "Customer Service"),
+  output_finance %>% mutate(prompt = "Finance"),
+  output_hr %>% mutate(prompt = "Human Resources"),
+  output_marketing %>% mutate(prompt = "Marketing"),
+  output_production %>% mutate(prompt = "Production"),
+  output_rd %>% mutate(prompt = "Research & Development"),
+  output_sales %>% mutate(prompt = "Sales")
+)
+
+
+all_comments_clean <- all_comments %>% 
+  separate(response, into = c(as.character(1:10)), sep = "\\d") %>% 
+  select(1,3:7) %>% 
+  arrange(`3`) 
+
+all_comments_cleaner <- all_comments_clean[21:635,] 
+
+all_comments_long <- all_comments_cleaner %>% 
+  pivot_longer(2:6) %>% 
+  arrange(value) %>%
+  select(-name) 
+
+all_comments_long %<>%
+  mutate(
+    value = str_remove_all(value, pattern = '\\"') %>% str_remove("^\\.")
+  ) 
+
+write.csv(all_comments_long, "hr_data/survey_comments.csv")
+
+
+#construction side ----
+
+#testb 1 prompt per comment with gpt 3.5 turbo
+prompts_1_3.5 <- rep("Please write a short employee comment typical for an employee survey sampling from the 13 themes in your background context. Please make sure to introduce some variety in length, sentiment, formality and quality.", 20)
+
+results_1_3.5 <- character(length(prompts_1_3.5))
+
+for (i in seq_along(prompts_1_3.5)) {
+  cat("Generating response", i, "of", length(prompts_1_3.5), "\n")
+  try({
+    results_1_3.5[i] <- generate_response(prompts_1_3.5[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output_1_3.5 <- tibble(prompt = prompts_1_3.5, response = results_1_3.5)
+
+#test 1 prompt per 5 comments with gpt 3.5 turbo
+prompts_5_3.5 <- rep("Please write a 5 short employee comments typical for an employee survey sampling from the 13 themes in your background context. Please introduce some variety in length, sentiment, formality for each comment and bring in the context of a sales department in two comments.", 4)
+
+results_5_3.5 <- character(length(prompts_5_3.5))
+
+for (i in seq_along(prompts_5_3.5)) {
+  cat("Generating response", i, "of", length(prompts_5_3.5), "\n")
+  try({
+    results_5_3.5[i] <- generate_response(prompts_5_3.5[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output_5_3.5 <- tibble(prompt = prompts_5_3.5, response = results_5_3.5)
+
+#test 1 prompt per 10 comments with gpt 3.5 turbo
+prompts_10_3.5 <- rep("Please write a 10 short employee comments typical for an employee survey sampling from the 13 themes in your background context. Please make sure to introduce some variety in length, sentiment, formality and quality.", 4)
+
+results_10_3.5 <- character(length(prompts_10_3.5))
+
+for (i in seq_along(prompts_10_3.5)) {
+  cat("Generating response", i, "of", length(prompts_10_3.5), "\n")
+  try({
+    results_10_3.5[i] <- generate_response(prompts_10_3.5[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output_10_3.5 <- tibble(prompt = prompts_10_3.5, response = results_10_3.5)
+
+
+#defining a function to send a prompt to openAI api model options tested: gpt-4o
+generate_response <- function(prompt, model = "gpt-4o", temperature = 0.9) {
+  response <- POST(
+    url = "https://api.openai.com/v1/chat/completions",
+    add_headers(Authorization = paste("Bearer", api_key)),
+    content_type_json(),
+    encode = "json",
+    body = list(
+      model = model,
+      messages = list(
+        list(role = "system", content = "You are a helpful assistant generating 
+             realistic employee survey responses for a company that manufactures 
+             specialised technology with 10000 people that has their headquarter 
+             in germany, large production sites in Germany and Czechia and sales, 
+             marketing and customer service in other european countries. Please 
+             sample from the following themes when I ask you to write employee 
+             survey comments. 1. A very siloed company structure and unwillingness 
+             to collaborate between departments 2. Strong believe in the need to 
+             change as a company and innovate supported strongly by all managers 
+             and leaders in the company 3. Managers push to make sure that 
+             everything is delivered at a high standard and on time, 4. Managers 
+             are very diligent and don't leave people much room to experiment but 
+             rather micromanage, 5. Managers care on a human level 
+             about their team and colleagues and try to support them where they 
+             can, even at their own expense, 6. Managers are terrible role models 
+             with regards to setting boundaries at work and looking after their 
+             own wellbeing, 7. High work load and poor wellbeing due to 
+             unrealistic targets and workload, 8. strong team cohesion and a sense 
+             of belonging, 9. very low autonomy and nobody is listenting really 
+             to new ideas or feedback from employees, 10. people feel well payed 
+             and recognised for their effort and have a sense of accomplishment, 
+             11. mental health is not really a topic people know how to talk about 
+             or feel safe bringing it up, 12. people feel like they don't have 
+             the skills or training to deal with all the change that is expected, 
+             13. people don't feel ready for change from their mindset yet"),
+        list(role = "user", content = prompt)
+      ),
+      temperature = temperature
+    )
+  )
+  
+  content <- content(response, as = "parsed", type = "application/json")
+  
+  # Extract response text
+  content$choices[[1]]$message$content
+}
+
+#test 1 prompt per comment with  gpt-4o
+prompts_1_4o <- rep("Please write a short employee comment typical for an employee survey sampling from the 13 themes in your background context. Please make sure to introduce some variety in length, sentiment, formality and quality.", 20)
+
+results_1_4o <- character(length(prompts_1_4o))
+
+for (i in seq_along(prompts_1_4o)) {
+  cat("Generating response", i, "of", length(prompts_1_4o), "\n")
+  try({
+    results_1_4o[i] <- generate_response(prompts_1_4o[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output_1_4o <- tibble(prompt = prompts_1_4o, response = results_1_4o)
+
+#test 1 prompt per 5 comments with gpt 4o 
+prompts_5_4o <- rep("Please write a 5 short employee comments typical for an employee survey sampling from the 13 themes in your background context. Please make sure to introduce some variety in length, sentiment, formality and quality.", 4)
+
+results_5_4o <- character(length(prompts_5_4o))
+
+for (i in seq_along(prompts_5_4o)) {
+  cat("Generating response", i, "of", length(prompts_5_4o), "\n")
+  try({
+    results_5_4o[i] <- generate_response(prompts_5_4o[i])
+    Sys.sleep(1.2)  # Delay to stay within rate limits (60 requests/min)
+  }, silent = TRUE)
+}
+
+output_5_4o <- tibble(prompt = prompts_5_4o, response = results_5_4o)
+
+
+
+
+#template and under construction below
+
+#Example: generate based on a vector of fake Likert scores or themes
 prompts <- rep("Please write a short employee comment about workload and time pressure.", 5000)
+
 
 results <- character(length(prompts))
 
