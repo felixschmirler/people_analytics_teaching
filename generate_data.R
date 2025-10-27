@@ -97,7 +97,7 @@ hrsystem_data %<>%
     update_status = "active"
   )
 
-#generate employee id
+#filter out senior leaders
 hrsystem_data %<>% 
   filter(job_level != "Leadership") %>%
   #filter(leaving_date > as_date("2009-12-31") | employee_status == "Current") %>% 

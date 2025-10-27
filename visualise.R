@@ -150,7 +150,7 @@ assessmentcenter_data %>%
 #   Ist das Assessment Center ein valides Instrument, um Performance vorherzusagen? 
 assessmentcenter_data %>% 
   left_join(hrsystem_data %>% select(employee_id, performance_24)) %>%
-  ggplot(aes(assessmentcenter_score, performance_24)) +
+  ggplot(aes(assessmentcenter_score, performance_25)) +
   geom_point() +
   geom_smooth(method = lm) #sieht schon mal gut aus, aber hier brauchen wir einen statistsichen Test
 
