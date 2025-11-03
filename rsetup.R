@@ -15,6 +15,7 @@ feedback_data <- read_csv("hr_data/feedback.csv")
 personality_data <- read_csv("hr_data/personality_data.csv")
 survey_comments <- read_csv("hr_data/survey_comments.csv")
 
+
 #Applicant Data (load and view data test run) ----
 applicant_data
 class(applicant_data)
@@ -47,7 +48,7 @@ file.remove("hr_data/hires.csv")
 #filter() - subsets of your data by categorical variables or numeric variables
 #how many employees do we have?
 hrsystem_data %>%
-  filter(employee_status == Current) %>% 
+  filter(employee_status == "Current") %>% 
   view()
 
 #how many new starters did we have since April last year that are still here?
