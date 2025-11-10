@@ -21,15 +21,32 @@ view(assessmentcenter_data) #assessment center score but no performance score
 view(personality_data) #a lot of scores but we don't know if there was an overall score or how the personality traits were weighted
 view(hrsystem_data) #some people have performance data that we could match with our assessment center data
 
-#join the assessment center data with the performance ratings from the hr system
+#create dataset with only employee id and performance data
 performance_data <- hrsystem_data %>%
   select(employee_id, performance_24)
 
+#join the assessment center data with the performance ratings from the hr system
 assessmentcenter_performance <- left_join(assessmentcenter_data, performance_data)
 
-assessmentcenter_performance %>% 
-  count(performance_24)
+#explore the data visually 
 
+#performance distribution
+assessmentcenter_performance %>% 
+  count(performance_24) %>%
+  ggplot(aes(performance_24, n)) +
+  geom_col() + f
+  ylim(0, 500) #not a terrible performance distribution
+  
+#assessment center score distribution
+assessmentcenter_performance %>%
+  ggplot(aes(assessmentcenter_score, fill = status)) + 
+  geom_histogram(position = "identity", alpha = 0.5, binwidth = 0.1)
+  
+#visually explor the correlation between assessment center score and performance data  
+assessmentcenter_performance %>% 
+    ggplot(aes(performance_24, assessmentcenter_score)) +
+    geom_jitter()
+  
 #Solution: calculate predictive validity ----
 ?cor #if not familiar with functions, take a look at the documentation
 ?cor.test
@@ -37,7 +54,7 @@ assessmentcenter_performance %>%
 cor(assessmentcenter_performance$assessmentcenter_score, assessmentcenter_performance$performance_24, use = "complete.obs") 
 cor.test(assessmentcenter_performance$assessmentcenter_score, assessmentcenter_performance$performance_24, use = "complete.obs") 
 
-#well, not great but at least a bit useful. Worth reviewing if there are certain aspects that can be improved
+#well, not great but at least a bit more useful than useless. Worth reviewing if there are certain aspects that can be improved
 
 #Adverse impact ---- 
 
@@ -57,10 +74,22 @@ applicant_data %>%
   filter(applicant_id == "00meqf7Xk0") %>%
   view()
 
+#create simplified stage variable
+applicant_data <- applicant_data %>%
+  mutate(
+    stage_simplified = str_sub(stage, 1, 7)
+  )
+
 #look at selection by stage and gender
 applicant_data %>%
-  count(stage, gender, status) %>%
-  view() #this is what we need but could get a bit complicated 
+  count(stage_simplified, gender, status) %>%
+  view() #this is what we need but a bit hard to navigate 
+
+#quick visualisation
+applicant_data %>%
+  count(stage_simplified, gender, status) %>% 
+  ggplot(aes(stage_simplified, n, fill = gender)) +
+  geom_col()
 
 #create new simpler dataset to look at selection rates at the CV screening stage only
 applicant_data %>%
@@ -80,3 +109,21 @@ applicant_data %>%
 0.2260232/0.2521669 #89.6%
 
 #no clear evidence for adverse impact from a first glance but definitely somehting that should be explored with statistical tests and different application rates + culture could still lead to problems
+
+#statistical tests for each category against majority group
+male_female_table <- applicant_data %>%
+  filter(stage == "Stage 1: CV Screening", gender != "Other") %>%
+  select(gender, status) %>%
+  table()
+
+chisq.test(male_female_table) #significant, very large sample size though
+library(vcd) #for large samples more important than significans: effect size
+assocstats(male_female_table)
+
+male_other_table <- applicant_data %>%
+  filter(stage == "Stage 1: CV Screening", gender != "Female") %>%
+  select(gender, status) %>%
+  table()
+
+chisq.test(male_other_table) 
+assocstats(male_other_table)
