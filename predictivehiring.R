@@ -34,7 +34,7 @@ assessmentcenter_performance <- left_join(assessmentcenter_data, performance_dat
 assessmentcenter_performance %>% 
   count(performance_24) %>%
   ggplot(aes(performance_24, n)) +
-  geom_col() + f
+  geom_col() + 
   ylim(0, 500) #not a terrible performance distribution
   
 #assessment center score distribution
