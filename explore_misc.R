@@ -11,12 +11,13 @@ applicant_data <- read_csv("hr_data/applicant_data.csv")
 assessmentcenter_data <- read_csv("hr_data/assessmentcenter_data.csv")
 personality_data <- read_csv("hr_data/personality_data.csv")
 hrsystem_data <- read_csv("hr_data/hrsystem_data.csv") 
-feedback <- read_csv("hr_data/feedback.csv")
+feedback_data <- read_csv("hr_data/feedback.csv")
+employeesurvey_data <- read_csv("hr_data/employeesurvey_data.csv")
 
 
 #360 Feedback Data ----
 
-##1. rating dimensions 
+##1. rating dimensions ----
 
 #create combined ratings across sources for each dimension (equally weighted)
 av_rating <- feedback_data %>%
@@ -51,13 +52,13 @@ av_rating %>%
     leadchange =  mean(e_leadchange),
     learn = mean(c_learn),
     champion =  mean(g_champion)
-  ) %>%
+  ) %>% #view() 
   pivot_longer(cols = everything()) %>%
   ggplot(aes(x = reorder(name, value), y = value)) +
   geom_col() + 
   coord_flip()
 
-##2. rating source 
+##2. rating source ----
 
 #create combined ratings across sources for each dimension (equally weighted)
 av_rating_source <- feedback_data %>%
@@ -77,9 +78,77 @@ av_rating_source %>%
     peers = mean(av_peers),
     reports = mean(av_reports)
   ) %>%
-  pivot_longer(cols = everything()) %>%
+  pivot_longer(cols = everything()) %>% #view() 
   ggplot(aes(x = reorder(name, value), y = value)) +
   geom_col() + 
   coord_flip()
 
+#Performance Data ---- 
+hrsystem_data %>% 
+  group_by(department) %>% 
+  summarise(
+    av_rating = mean(performance_24, na.rm = TRUE)
+  ) %>% #view() 
+  ggplot(aes(department, av_rating)) +
+  geom_col() 
 
+#there are nicer ways to explore the distribution but tough for ordinal data
+
+#hard to compare due to different number of employees
+hrsystem_data %>%  
+  ggplot(aes(performance_24)) +
+  geom_bar() +
+  facet_wrap(~department)
+
+#density plots don't work here either
+hrsystem_data %>% 
+  ggplot(aes(performance_24)) +
+  geom_density() +
+  facet_wrap(~department)
+
+#staked bar chart is maybe the best option 
+hrsystem_data %>% 
+  count(department, performance_24) %>% #view()
+  filter(!is.na(performance_24)) %>%
+  ggplot(aes(department, n, fill = performance_24)) +
+  geom_bar(position="fill", stat="identity") 
+
+#Employee survey data ----
+
+##1.Completion rates ----
+
+#count per department doesn't tell us the percentages 
+employeesurvey_data %>% 
+  count(department)
+
+#asssuming the data was pulled from the system at the same time let's look at current employees
+#there are a lot of assumptions about this data e.g. maternity leaves etc. removed
+
+hrsystem_data %>%
+  filter(employee_status == "Current") %>%
+  count(department)
+
+#you can do it manually from here or automate this completely
+
+complete <- employeesurvey_data %>% 
+  count(department) %>% 
+  rename(completed = n)
+
+total = hrsystem_data %>%
+  filter(employee_status == "Current") %>%
+  count(department) %>%
+  rename(total = n)
+
+completion_rates <- left_join(complete, total) %>%
+  mutate(
+    completion_rate = completed / total,
+    completion_rate = completion_rate %>% 
+      round(3) %>%
+      scales::percent() 
+      
+    )
+  
+write_csv(completion_rates, paste0(Sys.Date(),"completionrates.csv"))
+file.remove(paste0(Sys.Date(),"completionrates.csv"))
+
+            
