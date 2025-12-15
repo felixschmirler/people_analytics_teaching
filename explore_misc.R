@@ -5,6 +5,7 @@
 #Load Packages
 #install.packages("tidyverse")
 library(tidyverse) #packages for data wrangling, analysis and visualisation
+library(psych) #package with an endless amount of useful functions e.g. for factor analysis
 
 #Load Datasets
 applicant_data <- read_csv("hr_data/applicant_data.csv")
@@ -119,16 +120,23 @@ hrsystem_data %>%
 
 #count per department doesn't tell us the percentages 
 employeesurvey_data %>% 
+  count()
+
+employeesurvey_data %>% 
   count(department)
 
 #asssuming the data was pulled from the system at the same time let's look at current employees
 #there are a lot of assumptions about this data e.g. maternity leaves etc. removed
+hrsystem_data %>%
+  filter(employee_status == "Current") %>%
+  count()
 
 hrsystem_data %>%
   filter(employee_status == "Current") %>%
   count(department)
 
 #you can do it manually from here or automate this completely
+8387/10090 #83.1%
 
 complete <- employeesurvey_data %>% 
   count(department) %>% 
@@ -151,4 +159,38 @@ completion_rates <- left_join(complete, total) %>%
 write_csv(completion_rates, paste0(Sys.Date(),"completionrates.csv"))
 file.remove(paste0(Sys.Date(),"completionrates.csv"))
 
-            
+##2. Factor Analysis ----
+
+#let's start with a few simple correlations
+names(employeesurvey_data)
+survey_likert <- employeesurvey_data[4:58]
+
+survey_likert %>%
+  cor() %>%
+  view()
+
+#how many factors would be ideal?
+fa.parallel(survey_likert) 
+nfactors(survey_likert)
+
+fa_1 <- fa(survey_likert, nfactors = 1, rotate = "oblimin")
+fa_1$loadings %>% view()
+
+fa_2 <- fa(survey_likert, nfactors = 2, rotate = "oblimin")
+fa_2$loadings %>% view()
+
+fa_3 <- fa(survey_likert, nfactors = 3, rotate = "oblimin")
+fa_3$loadings %>% view()
+
+fa_5 <- fa(survey_likert, nfactors = 5, rotate = "oblimin")
+fa_5$loadings %>% view()
+
+fa_4 <- fa(survey_likert, nfactors = 4, rotate = "oblimin")
+fa_4$loadings %>% view()
+
+fa_6 <- fa(survey_likert, nfactors = 6, rotate = "oblimin")
+fa_6$loadings %>% view()
+
+
+#let's try a bi-factor model
+omega(survey_likert, 5)
