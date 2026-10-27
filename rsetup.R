@@ -1,96 +1,66 @@
-#Script to test your R setup and explore the different HR datasets
+#Script to test your R setup and explore hr_system data
 
-#Setup ----
+#0. Setup ----
 
 #Load Packages
 #install.packages("tidyverse")
 library(tidyverse) #packages for data wrangling, analysis and visualisation
 
-#Load Datasets
-applicant_data <- read_csv("hr_data/applicant_data.csv")
-assessmentcenter_data <- read_csv("hr_data/assessmentcenter_data.csv")
-employeesurvey_data <- read_csv("hr_data/employeesurvey_data.csv")
+#Load data
 hrsystem_data <- read_csv("hr_data/hrsystem_data.csv") 
-feedback_data <- read_csv("hr_data/feedback.csv")
-personality_data <- read_csv("hr_data/personality_data.csv")
-survey_comments <- read_csv("hr_data/survey_comments.csv")
 
+#1. hr_system data  ----
+#there are a few functions but first pass I would probably inspect with view()
+head(hrsystem_data)
+str(hrsystem_data)
+summary(hrsystem_data)
+view(hrsystem_data)
 
-#Applicant Data (load and view data test run) ----
-applicant_data
-class(applicant_data)
-head(applicant_data)
-str(applicant_data)
-summary(applicant_data)
-view(applicant_data)
+##2. Explore company structure  ----
 
-#base R (no pipe operator) - can get hard to navigate
-view(filter(applicant_data, status == "hired"))
-
-#tidyverse (with pipe operator) - makes code easier to read and adapt later
-applicant_data %>%
-  filter(status == "hired") %>%
-  view()
-
-#create new objects in R
-hires <- applicant_data %>%
-  filter(status == "hired") 
+#create new object in R with current employees only
+current <- hrsystem_data %>%
+  filter(employee_status == "Current") %>%
+  #filter(employee_status == "Current" & tenure_years > 10) %>% #booleans
+  #filter(str_detect(employee_status, "Current")) %>% #regex-based filter with stringr
+  select(employee_id, department, job_level, country, gender, tenure_years)
 
 #write objects to file 
-write_csv(hires, "hr_data/hires.csv")
+write_csv(current, "hr_data/current_employees.csv")
 
 #you can also remove objects and files 
-rm(hires)
-file.remove("hr_data/hires.csv")
-
-#HR System Data (dplyr test run) ----
-
-#filter() - subsets of your data by categorical variables or numeric variables
-#how many employees do we have?
-hrsystem_data %>%
-  filter(employee_status == "Current") %>% 
-  view()
-
-#how many new starters did we have since April last year that are still here?
-hrsystem_data %>%
-  filter(start_date > as_date("2024-04-01"), employee_status == Current) %>% #date formats can be tricky! e.g. dmy()
-  view()
-
-#count() - think table
-hrsystem_data %>% 
-  count(employee_status)
-
-hrsystem_data %>% 
-  count(employee_status, gender)
-
-#select() - less variables are easier to navigate (also when you want to join them with other data)
-hrsystem_data %>% 
-  select(job_level, country, department, tenure_years) %>% 
-  view()
-
-#arrange() - sort
-hrsystem_data %>% 
-  select(job_level, country, department, tenure_years) %>%
-  arrange(-tenure_years) %>% view()
+#rm(current)
+file.remove("hr_data/current_employees.csv")
 
 #mutate() - create new variables
-hrsystem_data %>%
+current %>%
   mutate(
-    department_joblevel = paste(department, "-", job_level)
+    department_joblevel = paste(department, "-", job_level),
+    long_term = tenure_years > 10,
+    long_term2 = if_else(tenure_years > 10, "long term", "recent")
   ) %>% view()
 
-hrsystem_data <- hrsystem_data %>%
+current <- current %>%
   mutate(
-    department_joblevel = paste(department, "-", job_level)
+    department_joblevel = paste(department, "-", job_level),
+    long_term2 = if_else(tenure_years > 10, "long term", "recent")
   ) 
 
-#summarise()
-mean(hrsystem_data$tenure_years)
-median(hrsystem_data$tenure_years)
-sd(hrsystem_data$tenure_years)
+#count() - think table
+current %>% 
+  count(long_term2)
 
-hrsystem_data %>% 
+current %>% 
+  count(long_term2, gender)
+
+#summarise()
+mean(current$tenure_years)
+median(current$tenure_years)
+sd(current$tenure_years)
+
+current %>% 
   summarise(
+    number = n(),
     average_tenure = mean(tenure_years),
     median_tenure = median(tenure_years),
     sd_tenure = sd(tenure_years)
@@ -98,60 +68,12 @@ hrsystem_data %>%
 
 
 #group_by()
-hrsystem_data %>%
+current %>%
   group_by(country) %>%
   summarise(
+    number = n(),
     average_tenure = mean(tenure_years),
     median_tenure = median(tenure_years),
     sd_tenure = sd(tenure_years)
   ) %>%
   ungroup()
-
-
-#Exploration (Messy!) ----
-
-#weird code from chat gpt
-# install.packages(c("lavaan", "semPlot"))  # if needed
-library(lavaan)
-library(semPlot)
-
-# Example data that ships with lavaan
-data("HolzingerSwineford1939")
-
-# 1) Confirmatory factor analysis (measurement model)
-cfa_model <- '
-  visual =~ x1 + x2 + x3
-  textual =~ x4 + x5 + x6
-  speed   =~ x7 + x8 + x9
-'
-
-cfa_fit <- cfa(cfa_model, data = HolzingerSwineford1939, std.lv = TRUE)
-summary(cfa_fit, fit.measures = TRUE, standardized = TRUE)
-
-# Optional: visualise the CFA
-semPaths(cfa_fit, "std", whatLabels = "std", edge.label.cex = .9, curvePivot = TRUE)
-
-# 2) Structural model (latent regressions on top of the measurement model)
-sem_model <- '
-  # Measurement
-  visual  =~ x1 + x2 + x3
-  textual =~ x4 + x5 + x6
-  speed   =~ x7 + x8 + x9
-
-  # Structural paths
-  textual ~ visual
-  speed   ~ visual + textual
-
-  # (Optional) Allow latent covariances not implied by regressions
-  # visual ~~ speed
-'
-
-sem_fit <- sem(sem_model, data = HolzingerSwineford1939, std.lv = TRUE)
-summary(sem_fit, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
-
-# Modification indices (to see potential model improvements)
-modindices(sem_fit, sort. = TRUE, minimum.value = 10)
-
-# Plot the SEM (standardised estimates)
-semPaths(sem_fit, "std", whatLabels = "std", edge.label.cex = .9, curvePivot = TRUE)
-
